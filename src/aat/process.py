@@ -3,11 +3,12 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import threading
 import time
 from pathlib import Path
 
 
-def execute(argv, cwd, log, timeout, env=None):
+def execute(argv, cwd, log, timeout, env=None, max_log_bytes=16 * 1024 * 1024):
     """No shell; output goes to disk; cancellation kills the process group."""
     log = Path(log)
     log.parent.mkdir(parents=True, exist_ok=True)
@@ -18,7 +19,7 @@ def execute(argv, cwd, log, timeout, env=None):
             p = subprocess.Popen(
                 argv,
                 cwd=cwd,
-                stdout=out,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
                 start_new_session=True,
@@ -27,6 +28,21 @@ def execute(argv, cwd, log, timeout, env=None):
         except OSError as e:
             result.update(reason="COMMAND_UNAVAILABLE", message=str(e))
             return result
+
+        def drain():
+            written = 0
+            for data in iter(lambda: p.stdout.read(65536), b""):
+                if written < max_log_bytes:
+                    chunk = data[: max_log_bytes - written]
+                    out.write(chunk)
+                    written += len(chunk)
+                if written >= max_log_bytes:
+                    result["log_truncated"] = True
+            if result.get("log_truncated"):
+                out.write(b"\n[AAT: process log truncated]\n")
+
+        reader = threading.Thread(target=drain, daemon=True)
+        reader.start()
         try:
             result["returncode"] = p.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -43,5 +59,7 @@ def execute(argv, cwd, log, timeout, env=None):
             except ProcessLookupError:
                 pass
             p.wait()
+            reader.join(timeout=5)
+            p.stdout.close()
     result["duration_seconds"] = round(time.monotonic() - start, 3)
     return result

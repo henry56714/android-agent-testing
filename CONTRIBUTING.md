@@ -1,6 +1,6 @@
 # 开发约定
 
-当前已有可运行原型。运行 `uv sync --frozen`、`uv run ruff check src tests`、`uv run pytest -q` 验证；设备相关改动还需按 [快速开始](docs/09-quickstart.md) 执行合成 App。按 [开发与验证计划](docs/06-development-and-validation.md) 继续补齐发布门槛。
+当前为 0.1.0。运行 `uv sync --frozen`、`uv run ruff check src tests`、`uv run pytest -q` 验证；设备相关改动还需按 [快速开始](docs/09-quickstart.md) 执行合成 App。按 [开发与验证计划](docs/06-development-and-validation.md) 继续补齐发布门槛。
 
 1. 通用核心不得出现某个客户 App 的包名、绝对目录、服务地址或业务阈值。
 2. 项目特有行为由配置、原生测试或项目适配层提供；不要为首个项目向核心加特殊分支。
@@ -10,4 +10,4 @@
 6. 合成样例可以公开；项目源码、业务用例、密钥、设备原始数据和运行产物不能自动复制到本仓库。
 7. 每个 PR 描述问题、行为变化及实际验证；未执行的设备验证明确列出。
 
-许可证在首次公开发布前按发布文档落实；当前仓库不宣称已完成开源发布。
+自有代码采用 Apache-2.0，依赖声明见 THIRD_PARTY.md。当前尚未公开发布。

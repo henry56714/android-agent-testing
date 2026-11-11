@@ -1,0 +1,7 @@
+Android Agent Testing
+Copyright 2026 Android Agent Testing contributors
+
+This repository's original code, documentation, and synthetic examples are
+licensed under Apache License 2.0. Third-party software retains its own license.
+The third_party directory contains license texts for Python runtime dependencies.
+Maestro, Android SDK tools, Gradle and JDK binaries are not distributed here.

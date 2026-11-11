@@ -14,6 +14,7 @@ from pathlib import Path
 
 from . import __version__
 from .device import inspect_device, query, tool
+from .lifecycle import excluded, redact, snapshot_source
 from .process import execute
 from .results import export_report, gate, instrumentation, junit, lint
 from .storage import Invalid, digest, inside, lock, write_json
@@ -23,7 +24,10 @@ def source_state(project):
     code, listing = query(
         ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], project.root
     )
-    if code:
+    # A standalone project may live inside an enclosing repository's ignored
+    # directory (e.g. a restored snapshot); successful Git with no files is not
+    # evidence that the project has no source inputs.
+    if code or not listing:
         paths = [
             p.relative_to(project.root).as_posix()
             for p in project.root.rglob("*")
@@ -36,7 +40,7 @@ def source_state(project):
         paths = listing.split("\0")
     files = {}
     for name in sorted(set(paths)):
-        if not name:
+        if not name or excluded(project, name):
             continue
         p = inside(project.root, name)
         if p.is_relative_to(project.artifacts) or ".aat" in p.relative_to(project.root).parts:
@@ -77,6 +81,7 @@ def freeze(project, cases, profile="change"):
         state = source_state(project)
         directory = project.artifacts / run_id
         directory.mkdir(parents=True)
+        snapshot_source(project, state, directory)
         for name in assets:
             dest = directory / "snapshot" / name
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -92,8 +97,14 @@ def freeze(project, cases, profile="change"):
             "source": state,
             "assets": assets,
             "cases": cases,
+            "source_snapshot": True,
+            "excluded_cases": [
+                {"id": c["id"], "reason": "outside_requested_selection"}
+                for c in project.cases.values()
+                if c["id"] not in {x["id"] for x in cases}
+            ],
             "reproduction_limits": [
-                "Only declared test assets are snapshotted; source rebuild requires the original source tree.",
+                "Source snapshot excludes Git-ignored and explicitly excluded files; external SDK/tools/secrets must be supplied.",
                 "Dynamic helpers must be declared in assets; API/device coverage is not inferred.",
             ],
         }
@@ -136,6 +147,7 @@ class Session:
         self.device = None
         self.installed = False
         self.installed_packages = []
+        self.capabilities = {}
         self.stack = ExitStack()
 
     def command(self, argv, name, timeout=120, env=None):
@@ -287,9 +299,19 @@ class Session:
         ):
             if applicability.get(key) and value not in applicability[key]:
                 return finish("SKIPPED", "NOT_APPLICABLE")
-        unsupported = set(c.get("requires", [])) - {"device", "ui_accessibility"}
+        custom = self.p.config.get("capabilities", {})
+        unsupported = set(c.get("requires", [])) - {"device", "ui_accessibility"} - set(custom)
         if unsupported:
             return finish("BLOCKED", "UNSUPPORTED_CAPABILITY", sorted(unsupported))
+        for capability in sorted(set(c.get("requires", [])) & set(custom)):
+            if capability not in self.capabilities:
+                spec = custom[capability]
+                self.capabilities[capability] = self.command(
+                    spec["argv"], f"capabilities/{capability}", spec["timeout_seconds"]
+                )
+            probe = self.capabilities[capability]
+            if probe["reason"] or probe["returncode"] != 0:
+                return finish("BLOCKED", "CAPABILITY_PROBE_FAILED", {"capability": capability})
         missing = [
             v for v in self.p.config.get("environment", {}).get("references", []) if v not in os.environ
         ]
@@ -435,25 +457,45 @@ def run(project, run_id, serial=None):
                     )
         finally:
             signal.signal(signal.SIGTERM, old_signal)
-            cleanup_errors = session.close()
+            try:
+                cleanup_errors = session.close()
+            except Exception as e:
+                cleanup_errors = [f"CLEANUP_FAILED: {e}"]
             if cleanup_errors:
                 result["gaps"].extend(cleanup_errors)
                 for c in result["cases"]:
                     if c["outcome"] == "PASS":
                         c.update(outcome="ERROR", reason_code="CLEANUP_FAILED")
-        if source_state(project)["fingerprint"] != plan["source"]["fingerprint"]:
-            result["gaps"].append("SOURCE_CHANGED_DURING_RUN")
+        try:
+            source_error = (
+                "SOURCE_CHANGED_DURING_RUN"
+                if source_state(project)["fingerprint"] != plan["source"]["fingerprint"]
+                else None
+            )
+        except Exception as e:
+            source_error = "SOURCE_VERIFICATION_FAILED"
+            result["gaps"].append(str(e))
+        if source_error:
+            result["gaps"].append(source_error)
             for c in result["cases"]:
                 if c["outcome"] == "PASS":
-                    c.update(outcome="ERROR", reason_code="SOURCE_CHANGED_DURING_RUN")
-        result["gate"], code = gate(result["cases"])
-        result["exit_code"] = code
+                    c.update(outcome="ERROR", reason_code=source_error)
         result["device"] = session.device
+        result = redact(project, directory, result)
         result["evidence_manifest"] = {}
         for c in result["cases"]:
             for relative in c.get("evidence", []):
-                path = inside(directory, relative, exists=True)
-                result["evidence_manifest"][relative] = {"sha256": digest(path), "bytes": path.stat().st_size}
+                try:
+                    path = inside(directory, relative, exists=True)
+                    result["evidence_manifest"][relative] = {
+                        "sha256": digest(path),
+                        "bytes": path.stat().st_size,
+                    }
+                except (OSError, Invalid):
+                    result["evidence_manifest"][relative] = {"state": "missing"}
+                    c.update(outcome="ERROR", reason_code="EVIDENCE_MISSING")
+        result["gate"], code = gate(result["cases"])
+        result["exit_code"] = code
         result["gaps"].extend(
             f"{c['id']}: {c['reason_code']}"
             for c in result["cases"]

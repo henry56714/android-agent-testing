@@ -9,7 +9,7 @@ from .storage import Invalid, inside, read_yaml
 
 
 class Project:
-    def __init__(self, path):
+    def __init__(self, path, *, catalog=True, allow_pending=False):
         self.path = Path(path).resolve()
         self.config = read_yaml(self.path, CONFIG)
         self.root = (self.path.parent / self.config["project"]["root"]).resolve()
@@ -18,7 +18,14 @@ class Project:
         self.artifacts = inside(self.root, self.config["artifacts"])
         if self.artifacts == self.root:
             raise Invalid("Artifacts cannot be project root")
+        if catalog and not allow_pending and (self.artifacts / "catalog-transaction.json").exists():
+            raise Invalid("Incomplete catalog transaction; run cases recover before reading")
         self.tasks = self.config.get("tasks", {})
+        for pattern in self.config.get("privacy", {}).get("patterns", []):
+            try:
+                re.compile(pattern)
+            except re.error as e:
+                raise Invalid(f"Invalid redaction pattern: {e}") from e
         instrumentation = self.config.get("instrumentation", {})
         for value in instrumentation.values():
             if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", value):
@@ -31,12 +38,15 @@ class Project:
             if "input_path" in product:
                 if set(product) != {"input_path"}:
                     raise Invalid(f"{name}: input_path is exclusive")
-                inside(self.root, product["input_path"], exists=True)
+                inside(self.root, product["input_path"], exists=catalog)
             else:
                 if set(product) != {"from_task", "path"} or product["from_task"] not in self.tasks:
                     raise Invalid(f"{name}: product needs path and existing from_task")
                 inside(self.root, product["path"])
-        self.cases = self._catalog()
+        self.cases = self._catalog() if catalog else {}
+        for spec in self.config.get("capabilities", {}).values():
+            if spec.get("depends_on") or spec.get("reports"):
+                raise Invalid("Capability probes use argv/timeout only")
 
     def order(self, names):
         done, visiting, result = set(), set(), []
@@ -101,6 +111,43 @@ class Project:
         files = [c["_path"], c["contract"], *c.get("assets", [])]
         if c["implementation"].get("path"):
             files.append(c["implementation"]["path"])
+        # Statically discover nested Maestro flows/scripts; dynamic paths stay explicit assets.
+        if c["implementation"]["engine"] == "maestro":
+            import yaml
+
+            pending = [inside(self.root, c["implementation"]["path"], exists=True)]
+            visited = set()
+            while pending:
+                path = pending.pop()
+                if path in visited:
+                    continue
+                visited.add(path)
+                files.append(str(path.relative_to(self.root)))
+
+                def walk(node):
+                    if isinstance(node, list):
+                        for item in node:
+                            walk(item)
+                    if not isinstance(node, dict):
+                        return
+                    for key, value in node.items():
+                        if key in ("runFlow", "runScript"):
+                            value_path = (
+                                value
+                                if isinstance(value, str)
+                                else value.get("file")
+                                if isinstance(value, dict)
+                                else None
+                            )
+                            if value_path and "${" not in value_path:
+                                dep = inside(self.root, str(path.parent / value_path), exists=True)
+                                files.append(str(dep.relative_to(self.root)))
+                                if key == "runFlow":
+                                    pending.append(dep)
+                        walk(value)
+
+                for document in yaml.safe_load_all(path.read_text()):
+                    walk(document)
         return sorted({str(inside(self.root, name).relative_to(self.root)) for name in files})
 
     def select(self, ids=(), tags=(), suite=None, changed=()):

@@ -51,6 +51,15 @@ CONFIG = obj(
         "instrumentation": obj({"test_application_id": S, "runner": S}, ["test_application_id", "runner"]),
         "environment": obj({"references": SS}),
         "device_policy": obj({"allow_clear_test_package": BOOL, "restore_changed_settings": BOOL}),
+        "profiles": {
+            "type": "object",
+            "propertyNames": ID,
+            "additionalProperties": obj({"cases": SS, "tags": SS, "suite": S}),
+        },
+        "capabilities": {"type": "object", "propertyNames": ID, "additionalProperties": TASK},
+        "snapshot": obj({"exclude": SS, "max_bytes": {"type": "integer", "minimum": 1}}),
+        "privacy": obj({"redact_env": SS, "patterns": SS}),
+        "retention": obj({"days": {"type": "integer", "minimum": 0}, "keep_failures": BOOL}),
     },
     ["schema_version", "project", "catalog", "artifacts"],
 )

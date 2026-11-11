@@ -1,16 +1,16 @@
 # 使用本工具的 Agent 工作规范
 
-本文件是可供任意 Coding Agent 读取的项目说明，不是自动安装的 Skill，也不要求专用模型 API。
+任何 Coding Agent 都可以读取此文件并调用 CLI；不依赖专用模型、Skill 或 MCP 服务。
 
-1. 读取被测项目开发规则、需求、diff 与 `android-testing.yaml`。没有配置时参考 examples 创建配置；不要把样例包名或阈值当成业务默认值。
-2. 使用 `aat cases search <关键词>`、`cases list` 查找已有用例；读原生测试和契约，确认适用性。缺口、推断与未确认需求先写明。
-3. 用 Gradle 工程原有 JUnit/instrumentation 或 Maestro YAML 生成测试。将 metadata 写入 testing/cases，保存契约及 helper/fixture。需要探索界面时调用已有 Maestro MCP，不依赖本 CLI 解释自然语言。
-4. 新用例先 draft；校验、执行器可发现、断言与清理机制验证后再 active。只有 active 用例执行；其他状态返回 BLOCKED 并留在报告里。
-5. 测试契约/脚本/helper 改动递增 revision。被测业务源码变化只改变 source fingerprint；不能为让测试通过而修改期望。
-6. `cases validate` 后 `plan --suite ...` 冻结；用 `run --run-id ... --device ...` 执行。相关源码/用例变更后创建新计划。直接 `run` 会先生成新计划。
-7. `--profile` 当前只是报告标签，选择范围以 `--case/--tag/--suite/--changed` 为准。无过滤时选择整个目录，包括非 active 用例，不能默认当成只运行 active。
-8. 每次 run 都是新记录。不要删除旧报告、反复重试到绿或停用失败回归用例。使用 report 读取结果。
-9. 报告本次验证范围、失败、阻塞、未覆盖和证据位置。设备未连接、test APK 缺失、测试数量为零、报告缺失都不是通过。
-10. 各 App 的源码、密钥、端点、运行证据留在各自项目；不要复制到工具的公共仓库。当前过程日志是原始输出，项目应使用合成数据，分享前检查内容。
+1. 读取被测工程规则、需求、diff 和 `android-testing.yaml`。无配置时用 `aat init --id PROJECT` 建立骨架，再补任务/产物；不得把样例包名或阈值套到真实项目。
+2. 先 `cases search`/`cases list`，读取已有契约和原生测试。列出本次行为、失败条件、并发/生命周期边界与可观察性缺口。
+3. 使用项目原有 JUnit、AndroidX instrumentation、Maestro YAML 编写测试，不另造测试步骤 DSL。共享 helper/fixture 列入 assets；字面量嵌套 Maestro flow/script 自动收集，动态引用仍须显式声明。
+4. 通过 `cases save ENVELOPE --expected-revision N` 原子保存 metadata 和声明资产。新 ID 使用 expected 0、revision 1；更新递增 revision，冲突后重新读取。已存在 schema v1 文件无需迁移；未知 schema 拒绝加载。
+5. 初始状态可为 draft。审查断言、可发现性及清理逻辑后以新 revision 激活；只有 active 实际执行，其他状态在选中时报告 BLOCKED。不得为变绿改变期望或移除失败用例。
+6. `cases validate` 后 `plan --base REF` 或明确指定用例/档位；`run --run-id ID --device SERIAL` 执行冻结计划。源码或测试有变动须新建计划。未知路径变更保守扩大到全库，仍需 Agent 判断已有测试是否覆盖新需求。
+7. profiles 在项目配置中定义；显式 case/tag/suite/changed 取并集并覆盖 profile 的选择。无 profile 配置时默认全库。计划列出未选中项，不能把局部通过当作全量通过。
+8. 用 `report ID`、`cases history ID` 检索证据；旧运行不可覆盖。需要复现旧 dirty 源码时 `replay ID --destination NEW_DIR --execute`，外部工具/SDK/依赖需另外提供。
+9. 汇报范围、断言、失败、阻塞、环境与缺口。退出 0 仅代表选中必需用例全通过，不代表 Android 所有机型正确。
+10. 项目源码、密钥、端点和原始证据留在项目内。配置 privacy 和 snapshot.exclude；脱敏只覆盖执行文本及最终结果，不处理源码快照、图片或二进制。分享前另行检查。prune 默认预览，--apply 才清理；失败与 pin 记录默认保留。
 
-当前不支持自动推断所有调用关系。`--changed` 使用 metadata 中声明的路径规则召回用例；Agent 在公共组件/构建变更或分析不确定时扩展范围。
+例如线程改动：保存契约，生成边界/上限的本地测试与真实 Watchdog 的设备测试，再补 UI 恢复冒烟。用 gate/latch 控制阻塞，断言真实 worker 身份、替换结果和旧任务清理。已有组件只观察日志而无法断言时，应报告缺口，不能声称测试到所有线程交错。

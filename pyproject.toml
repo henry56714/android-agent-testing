@@ -1,6 +1,8 @@
 [project]
 name = "android-agent-testing"
-version = "0.1.0.dev0"
+version = "0.1.0"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "third_party/*"]
 description = "Persistent, agent-friendly Android testing with native test tools"
 requires-python = ">=3.11"
 dependencies = ["PyYAML>=6.0.2,<7", "jsonschema>=4.23,<5"]

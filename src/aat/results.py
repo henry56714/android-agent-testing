@@ -25,15 +25,23 @@ def junit(paths, selector=None):
         for t in root.iter("testcase"):
             name = f"{t.get('classname', '')}#{t.get('name', '')}"
             outcome = "PASS"
-            if t.find("error") is not None or t.get("status", "").lower() in ("error", "errored"):
+            # Structured JUnit elements take precedence over advisory status.
+            # Maestro 2.12 emits status=ERROR with a <failure> for assertions.
+            if t.find("error") is not None:
                 outcome = "ERROR"
-            elif t.find("failure") is not None or t.get("status", "").lower() in (
+            elif t.find("failure") is not None:
+                outcome = "FAIL"
+            elif t.find("skipped") is not None:
+                outcome = "SKIPPED"
+            elif t.get("status", "").lower() in ("error", "errored"):
+                outcome = "ERROR"
+            elif t.get("status", "").lower() in (
                 "failure",
                 "failed",
                 "fail",
             ):
                 outcome = "FAIL"
-            elif t.find("skipped") is not None or t.get("status", "").lower() in (
+            elif t.get("status", "").lower() in (
                 "skipped",
                 "disabled",
                 "notrun",
