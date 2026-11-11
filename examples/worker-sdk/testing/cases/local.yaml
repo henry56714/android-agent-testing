@@ -1,0 +1,14 @@
+schema_version: 1
+id: sdk.worker.recovery
+revision: 2
+status: active
+title: Failure does not stop subsequent queued work
+layer: local
+tags: [fast, thread]
+contract: testing/contract.md
+implementation:
+  engine: junit
+  task: sdk_test
+  selector: org.example.aat.sdk.SerialWorkerTest#preservesOrderAfterFailure
+  path: sdk/src/test/java/org/example/aat/sdk/SerialWorkerTest.java
+timeout_seconds: 300

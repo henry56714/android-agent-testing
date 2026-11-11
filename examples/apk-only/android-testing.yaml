@@ -1,0 +1,9 @@
+schema_version: 1
+project: {id: sample.apk-only, mode: apk, root: .}
+catalog: testing/cases
+artifacts: .aat/runs
+target:
+  application_id: org.example.aat.counter
+  device: {min_api: 28, serial_env: ANDROID_SERIAL}
+products:
+  app: {input_path: input/app.apk}

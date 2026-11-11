@@ -70,6 +70,8 @@ quarantined 表示已知不稳定，需要原因、问题引用和解除条件�
 
 稳定 ID 不随标题或文件重命名改变。契约、断言、步骤、fixture、适用范围实质变化时 revision 增加。共享 helper/子 flow 改动影响所有引用 case：索引识别显式依赖，重新验证并生成相应版本；动态依赖无法解析时扩大测试范围并标记盲区。
 
+`assets` 只登记测试 helper、fixture、子 flow 等测试依赖。被测业务源码由运行的 source fingerprint 跟踪，不能放入测试资产闭包而要求每次业务修改都升级 case revision。同一版本的测试应能对比缺陷源码与修复源码。
+
 执行锁文件固定：case ID/revision、catalog 内容哈希、原生测试与 helper/fixture 哈希、源码 commit/快照、配置、引擎版本。revision 相同而内容变化必须被检测，禁止历史运行改指最新文件。
 
 重放历史测试需要可恢复的资产快照。工具保存本次测试资产闭包；仅存哈希不能声称可重放。依赖缺失、旧工具不可用或旧 APK 不可获取时报告复现限制。

@@ -1,0 +1,10 @@
+schema_version: 1
+id: sdk.host.ui
+revision: 1
+status: active
+title: SDK host counter works
+layer: ui
+tags: [device, smoke]
+contract: testing/contract.md
+implementation: {engine: maestro, path: testing/maestro/increment.yaml}
+timeout_seconds: 120

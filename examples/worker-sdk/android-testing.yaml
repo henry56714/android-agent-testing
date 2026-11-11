@@ -1,0 +1,26 @@
+schema_version: 1
+project: {id: sample.worker-sdk, mode: source, root: .}
+catalog: testing/cases
+artifacts: .aat/runs
+target:
+  application_id: org.example.aat.worker
+  variant: debug
+  device: {min_api: 28, serial_env: ANDROID_SERIAL}
+tasks:
+  sdk_test:
+    argv: [bash, gradle.sh, ':sdk:testDebugUnitTest', --console=plain]
+    reports: ['sdk/build/test-results/testDebugUnitTest/*.xml']
+    timeout_seconds: 300
+  sdk_build:
+    argv: [bash, gradle.sh, ':sdk:assembleDebug', --console=plain]
+    timeout_seconds: 300
+  host_build:
+    depends_on: [sdk_build]
+    argv: [bash, gradle.sh, ':host:assembleDebug', ':host:assembleDebugAndroidTest', --console=plain]
+    timeout_seconds: 300
+products:
+  app: {from_task: host_build, path: host/build/outputs/apk/debug/host-debug.apk}
+  instrumentation: {from_task: host_build, path: host/build/outputs/apk/androidTest/debug/host-debug-androidTest.apk}
+instrumentation:
+  test_application_id: org.example.aat.worker.test
+  runner: androidx.test.runner.AndroidJUnitRunner

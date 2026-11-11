@@ -1,0 +1,14 @@
+schema_version: 1
+id: counter.increment
+revision: 2
+status: active
+title: One increment changes zero to one
+layer: local
+tags: [fast, counter]
+contract: testing/contract.md
+implementation:
+  engine: junit
+  task: local
+  selector: org.example.aat.counter.CounterTest#incrementsExactlyOnce
+  path: app/src/test/java/org/example/aat/counter/CounterTest.java
+timeout_seconds: 300

@@ -1,0 +1,3 @@
+schema_version: 1
+id: full
+cases: [counter.increment, counter.lint, counter.worker, counter.ui]

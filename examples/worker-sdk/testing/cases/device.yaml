@@ -1,0 +1,13 @@
+schema_version: 1
+id: sdk.worker.host
+revision: 2
+status: active
+title: SDK executes inside Android host
+layer: device
+tags: [device]
+contract: testing/contract.md
+implementation:
+  engine: instrumentation
+  selector: org.example.aat.worker.WorkerTest#sdkRunsInHost
+  path: host/src/androidTest/java/org/example/aat/worker/WorkerTest.java
+timeout_seconds: 120

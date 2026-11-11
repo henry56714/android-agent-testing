@@ -1,0 +1,13 @@
+schema_version: 1
+id: counter.worker
+revision: 1
+status: active
+title: Real Android worker executes once and exits
+layer: device
+tags: [device]
+contract: testing/contract.md
+implementation:
+  engine: instrumentation
+  selector: org.example.aat.counter.WorkerTest#executesOnWorker
+  path: app/src/androidTest/java/org/example/aat/counter/WorkerTest.java
+timeout_seconds: 120

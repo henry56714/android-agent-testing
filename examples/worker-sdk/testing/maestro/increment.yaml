@@ -1,0 +1,8 @@
+appId: org.example.aat.worker
+name: sdk.host.ui
+---
+- launchApp:
+    stopApp: true
+- assertVisible: 'Count: 0'
+- tapOn: Increment
+- assertVisible: 'Count: 1'

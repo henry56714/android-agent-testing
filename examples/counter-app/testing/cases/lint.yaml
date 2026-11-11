@@ -1,0 +1,10 @@
+schema_version: 1
+id: counter.lint
+revision: 1
+status: active
+title: No Android Lint errors
+layer: static
+tags: [fast]
+contract: testing/contract.md
+implementation: {engine: lint, task: lint}
+timeout_seconds: 300

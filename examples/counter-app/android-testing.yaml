@@ -1,0 +1,27 @@
+schema_version: 1
+project: {id: sample.counter, mode: source, root: .}
+catalog: testing/cases
+suites: testing/suites
+artifacts: .aat/runs
+target:
+  application_id: org.example.aat.counter
+  variant: debug
+  device: {min_api: 28, serial_env: ANDROID_SERIAL}
+tasks:
+  local:
+    argv: [bash, gradle.sh, ':app:testDebugUnitTest', --console=plain]
+    timeout_seconds: 300
+    reports: ['app/build/test-results/testDebugUnitTest/*.xml']
+  lint:
+    argv: [bash, gradle.sh, ':app:lintDebug', --console=plain]
+    timeout_seconds: 300
+    reports: [app/build/reports/lint-results-debug.xml]
+  build:
+    argv: [bash, gradle.sh, ':app:assembleDebug', ':app:assembleDebugAndroidTest', --console=plain]
+    timeout_seconds: 600
+products:
+  app: {from_task: build, path: app/build/outputs/apk/debug/app-debug.apk}
+  instrumentation: {from_task: build, path: app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk}
+instrumentation:
+  test_application_id: org.example.aat.counter.test
+  runner: androidx.test.runner.AndroidJUnitRunner
