@@ -10,6 +10,7 @@ import yaml
 
 from .catalog import history, recover, save
 from .device import doctor, query
+from .discovery import reconcile, scan
 from .lifecycle import prune, read_report, restore
 from .project import Project
 from .runner import Session, freeze, load_plan, run, run_directory
@@ -27,6 +28,8 @@ def main(argv=None):
     schema.add_argument("kind", choices=["project", "case", "suite"])
     d = sub.add_parser("doctor")
     d.add_argument("--device")
+    discovery = sub.add_parser("discover")
+    discovery.add_argument("--apply", action="store_true")
     c = sub.add_parser("cases")
     c.add_argument("action", choices=["list", "show", "search", "validate", "save", "history", "recover"])
     c.add_argument("query", nargs="?")
@@ -37,7 +40,7 @@ def main(argv=None):
         p.add_argument("--tag", action="append", default=[])
         p.add_argument("--changed", action="append", default=[])
         p.add_argument("--suite")
-        p.add_argument("--profile", default="change")
+        p.add_argument("--profile")
         p.add_argument("--base")
         if name == "run":
             p.add_argument("--run-id")
@@ -70,6 +73,7 @@ def main(argv=None):
                 "suites": "testing/suites",
                 "artifacts": ".aat/runs",
                 "profiles": {"fast": {"tags": ["fast"]}, "change": {"tags": ["smoke"]}, "full": {}},
+                "discovery": {"enabled": True},
             }
             import jsonschema
 
@@ -80,7 +84,14 @@ def main(argv=None):
             (target.parent / "testing/cases").mkdir(parents=True, exist_ok=True)
             (target.parent / "testing/suites").mkdir(parents=True, exist_ok=True)
             target.write_text(yaml.safe_dump(config, sort_keys=False))
-            print(json.dumps({"created": str(target), "next": "Add project tasks/products and native cases"}))
+            print(
+                json.dumps(
+                    {
+                        "created": str(target),
+                        "next": "Run discover --apply; configure APK/UI products and custom task dependencies as needed",
+                    }
+                )
+            )
             return 0
         if args.command == "schema":
             from .schema import CASE, CONFIG, SUITE
@@ -93,6 +104,9 @@ def main(argv=None):
         project = Project(args.project, catalog=not lightweight)
         if args.command == "doctor":
             result = doctor(project, args.device)
+        elif args.command == "discover":
+            result = reconcile(project) if args.apply else scan(project)
+            code = 3 if result["gaps"] else 0
         elif args.command == "cases":
             cases = list(project.cases.values())
             if args.action == "save":
@@ -128,6 +142,15 @@ def main(argv=None):
                     raise Invalid("Cannot change selection of a frozen plan")
                 run_id = args.run_id
             else:
+                explicit = bool(args.case or args.tag or args.suite or args.changed or args.base)
+                takeover = project.config.get("discovery", {}).get("enabled", False)
+                profile = args.profile or ("full" if takeover and not explicit else "change")
+                if args.profile == "full" and explicit:
+                    raise Invalid("Full profile cannot be combined with partial selectors")
+                audit = None
+                if takeover and profile == "full" and not explicit:
+                    audit = reconcile(project)
+                    project = Project(project.path)
                 selection = {"ids": args.case, "tags": args.tag, "suite": args.suite, "changed": args.changed}
                 if args.base:
                     rc, changed = query(["git", "diff", "--name-only", args.base, "--"], project.root)
@@ -149,15 +172,15 @@ def main(argv=None):
                         selection = {"ids": [], "tags": [], "suite": None, "changed": []}
                 if not any(selection.values()) and not args.base:
                     profiles = project.config.get("profiles", {})
-                    if profiles and args.profile not in profiles:
+                    if profiles and profile not in profiles and profile != "full":
                         raise Invalid("Unknown profile")
-                    selected_profile = profiles.get(args.profile, {})
+                    selected_profile = {} if profile == "full" else profiles.get(profile, {})
                     selection.update(
                         ids=selected_profile.get("cases", []),
                         tags=selected_profile.get("tags", []),
                         suite=selected_profile.get("suite"),
                     )
-                result = freeze(project, project.select(**selection), args.profile)
+                result = freeze(project, project.select(**selection), profile, discovery=audit)
                 run_id = result["run_id"]
             if args.command == "run":
                 result, code = run(project, run_id, args.device)

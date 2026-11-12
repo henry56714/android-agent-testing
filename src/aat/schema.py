@@ -22,6 +22,7 @@ TASK = obj(
         "depends_on": SS,
         "reports": SS,
         "timeout_seconds": TIME,
+        "device": BOOL,
     },
     ["argv", "timeout_seconds"],
 )
@@ -60,6 +61,20 @@ CONFIG = obj(
         "snapshot": obj({"exclude": SS, "max_bytes": {"type": "integer", "minimum": 1}}),
         "privacy": obj({"redact_env": SS, "patterns": SS}),
         "retention": obj({"days": {"type": "integer", "minimum": 0}, "keep_failures": BOOL}),
+        "discovery": obj(
+            {
+                "enabled": BOOL,
+                "gradle_argv": SS,
+                "manifest": S,
+                "exclude": {
+                    "type": "array",
+                    "items": obj({"pattern": S, "reason": S}, ["pattern", "reason"]),
+                },
+                "task_dependencies": {"type": "object", "additionalProperties": SS},
+                "task_cases": {"type": "object", "additionalProperties": SS},
+                "source_cases": {"type": "object", "additionalProperties": SS},
+            }
+        ),
     },
     ["schema_version", "project", "catalog", "artifacts"],
 )
@@ -78,7 +93,7 @@ CASE = obj(
         "impact": obj({"paths": SS, "symbols": SS}),
         "implementation": obj(
             {
-                "engine": {"enum": ["junit", "lint", "maestro", "instrumentation"]},
+                "engine": {"enum": ["junit", "lint", "maestro", "instrumentation", "gradle-device"]},
                 "task": S,
                 "selector": S,
                 "path": S,

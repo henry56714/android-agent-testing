@@ -119,6 +119,9 @@ def export_report(directory, result):
         "",
         f"Gate: {result['gate']}",
         "",
+        f"Scope: {result.get('coverage', {}).get('scope', 'partial')}",
+        f"Full project passed: {result.get('coverage', {}).get('full_project_passed', False)}",
+        "",
         "| Case | Revision | Outcome | Reason |",
         "|---|---|---|---|",
     ]
@@ -131,5 +134,12 @@ def export_report(directory, result):
             ET.SubElement(t, tag, message=c["outcome"] + ": " + c["reason_code"])
     for name, tag in (("failures", "failure"), ("errors", "error"), ("skipped", "skipped")):
         root.set(name, str(len(root.findall(f"testcase/{tag}"))))
+    coverage = result.get("coverage", {})
+    if coverage.get("unresolved") or coverage.get("excluded"):
+        lines.extend(["", "## Discovery audit", ""])
+        for item in coverage.get("unresolved", []):
+            lines.append(f"- Unresolved: {item['item']} — {item['reason']}")
+        for item in coverage.get("excluded", []):
+            lines.append(f"- Excluded: {item['item']} — {item['reason']}")
     ET.ElementTree(root).write(directory / "junit.xml", encoding="utf-8", xml_declaration=True)
     (directory / "report.md").write_text("\n".join(lines) + "\n")

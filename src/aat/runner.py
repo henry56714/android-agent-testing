@@ -57,7 +57,11 @@ def source_state(project):
     }
 
 
-def freeze(project, cases, profile="change"):
+def freeze(project, cases, profile="change", discovery=None):
+    if discovery is not None:
+        # Run native device suites first; exact-method catalog entries can then
+        # reuse their already completed results instead of controlling the device twice.
+        cases = sorted(cases, key=lambda c: c["implementation"]["engine"] != "gradle-device")
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:12]
     with lock(project.artifacts / ".catalog.lock"):
         registry_path = project.artifacts / "case-revisions.json"
@@ -98,6 +102,7 @@ def freeze(project, cases, profile="change"):
             "assets": assets,
             "cases": cases,
             "source_snapshot": True,
+            "discovery": discovery,
             "excluded_cases": [
                 {"id": c["id"], "reason": "outside_requested_selection"}
                 for c in project.cases.values()
@@ -171,7 +176,19 @@ class Session:
                 dest = directory / "previous" / old.relative_to(self.p.root)
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(old, dest)
-        r = self.command(spec["argv"], f"tasks/{name}", spec["timeout_seconds"])
+        env = None
+        if spec.get("device"):
+            device = self.prepare_device()
+            if not device["available"]:
+                return {"returncode": None, "reason": device["reason"], "reports": []}
+            env = {"ANDROID_SERIAL": device["serial"]}
+            for package in (
+                self.p.config.get("target", {}).get("application_id"),
+                self.p.config.get("instrumentation", {}).get("test_application_id"),
+            ):
+                if package and package not in self.installed_packages:
+                    self.installed_packages.append(package)
+        r = self.command(spec["argv"], f"tasks/{name}", spec["timeout_seconds"], env=env)
         reports = []
         for pattern in spec.get("reports", []):
             for path in sorted(glob.glob(str(inside(self.p.root, pattern)), recursive=True)):
@@ -319,9 +336,49 @@ class Session:
             return finish("BLOCKED", "MISSING_ENVIRONMENT", missing)
         impl = c["implementation"]
         engine = impl["engine"]
-        if engine in ("junit", "lint"):
+        if engine == "instrumentation":
+            for name, completed in self.tasks.items():
+                suites = [
+                    s
+                    for s in self.p.cases.values()
+                    if s["implementation"]["engine"] == "gradle-device"
+                    and s["implementation"].get("task") == name
+                    and impl.get("path") in s.get("assets", [])
+                ]
+                variant = self.p.config.get("target", {}).get("variant")
+                if variant:
+                    suites = [
+                        s
+                        for s in suites
+                        if s.get("origin", {})
+                        .get("reference", "")
+                        .lower()
+                        .endswith("connected" + variant.lower() + "androidtest")
+                    ]
+                if not suites:
+                    continue
+                if (
+                    not self.p.tasks[name].get("device")
+                    or completed.get("reason")
+                    or not completed.get("reports")
+                ):
+                    continue
+                outcome, reason, details = junit(completed["reports"], impl["selector"])
+                if reason == "TEST_NOT_DISCOVERED":
+                    continue
+                if completed["returncode"] != 0 and outcome == "PASS":
+                    outcome, reason = "ERROR", "ENGINE_EXIT_ERROR"
+                result["attempts"].append({k: v for k, v in completed.items() if k != "reports"})
+                result["evidence"] = [str(p.relative_to(self.directory)) for p in completed["reports"]]
+                result["reused_native_task"] = name
+                return finish(outcome, reason, details)
+        if engine in ("junit", "lint", "gradle-device"):
             if self.p.config["project"]["mode"] == "apk":
                 return finish("BLOCKED", "SOURCE_REQUIRED")
+            if engine == "gradle-device":
+                device = self.prepare_device()
+                if not device["available"]:
+                    return finish("BLOCKED", device["reason"])
             r = self.task(impl["task"])
             result["attempts"].append({k: v for k, v in r.items() if k != "reports"})
             if r["reason"]:
@@ -331,7 +388,7 @@ class Session:
             result["evidence"] = [str(p.relative_to(self.directory)) for p in r["reports"]]
             parsed = (
                 junit(r["reports"], impl["selector"])
-                if engine == "junit"
+                if engine in ("junit", "gradle-device")
                 else lint(r["reports"], impl.get("fail_severities", ["Error", "Fatal"]))
             )
         else:
@@ -472,6 +529,10 @@ def run(project, run_id, serial=None):
                 if source_state(project)["fingerprint"] != plan["source"]["fingerprint"]
                 else None
             )
+            if any(
+                digest(inside(project.root, name, exists=True)) != sha for name, sha in plan["assets"].items()
+            ):
+                source_error = "TEST_ASSETS_CHANGED_DURING_RUN"
         except Exception as e:
             source_error = "SOURCE_VERIFICATION_FAILED"
             result["gaps"].append(str(e))
@@ -481,6 +542,28 @@ def run(project, run_id, serial=None):
                 if c["outcome"] == "PASS":
                     c.update(outcome="ERROR", reason_code=source_error)
         result["device"] = session.device
+        audit = plan.get("discovery")
+        result["coverage"] = {
+            "scope": "full" if audit is not None else "partial",
+            "discovery_fingerprint": audit.get("fingerprint") if audit else None,
+            "entries": audit.get("coverage", {}) if audit else {},
+            "unresolved": audit.get("gaps", []) if audit else [],
+            "excluded": audit.get("excluded", []) if audit else [],
+        }
+        explicit_exclusions = (
+            [e for e in audit["excluded"] if e["reason"] != "NO_TEST_SOURCE_IN_VARIANT"] if audit else []
+        )
+        if audit and (audit["gaps"] or explicit_exclusions):
+            result["cases"].append(
+                {
+                    "id": "discovery.coverage",
+                    "revision": 1,
+                    "required": True,
+                    "outcome": "BLOCKED",
+                    "reason_code": "UNMANAGED_TESTS" if audit["gaps"] else "EXCLUDED_TESTS",
+                    "details": audit["gaps"] + explicit_exclusions,
+                }
+            )
         result = redact(project, directory, result)
         result["evidence_manifest"] = {}
         for c in result["cases"]:
@@ -495,6 +578,17 @@ def run(project, run_id, serial=None):
                     result["evidence_manifest"][relative] = {"state": "missing"}
                     c.update(outcome="ERROR", reason_code="EVIDENCE_MISSING")
         result["gate"], code = gate(result["cases"])
+        outcomes = {c["id"]: c["outcome"] for c in result["cases"]}
+        result["coverage"]["entry_outcomes"] = {
+            key: {case_id: outcomes.get(case_id, "NOT_EXECUTED") for case_id in case_ids}
+            for key, case_ids in result["coverage"]["entries"].items()
+        }
+        result["coverage"]["full_project_passed"] = bool(
+            audit is not None
+            and code == 0
+            and not audit["gaps"]
+            and not any(e["reason"] != "NO_TEST_SOURCE_IN_VARIANT" for e in audit["excluded"])
+        )
         result["exit_code"] = code
         result["gaps"].extend(
             f"{c['id']}: {c['reason_code']}"

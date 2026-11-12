@@ -1,0 +1,21 @@
+schema_version: 1
+id: discovered.gradle-device.86baaa35d0d2d08b
+revision: 1
+status: active
+title: :app:connectedDebugAndroidTest
+layer: device
+contract: testing/contracts/discovered-tests.md
+implementation:
+  engine: gradle-device
+  task: discovered_86baaa35d0d2d08b
+  selector: '*'
+assets:
+- app/src/androidTest/java/org/example/aat/counter/WorkerTest.java
+timeout_seconds: 600
+required: true
+tags:
+- discovered
+- device
+origin:
+  kind: discovery
+  reference: :app:connectedDebugAndroidTest

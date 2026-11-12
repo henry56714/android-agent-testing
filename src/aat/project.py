@@ -84,10 +84,16 @@ class Project:
             engine = impl["engine"]
             if (
                 c["layer"]
-                != {"junit": "local", "lint": "static", "maestro": "ui", "instrumentation": "device"}[engine]
+                != {
+                    "junit": "local",
+                    "lint": "static",
+                    "maestro": "ui",
+                    "instrumentation": "device",
+                    "gradle-device": "device",
+                }[engine]
             ):
                 raise Invalid(f"{c['id']}: layer does not match engine")
-            if engine in ("junit", "lint"):
+            if engine in ("junit", "lint", "gradle-device"):
                 if impl.get("task") not in self.tasks:
                     raise Invalid(f"{c['id']}: missing task")
                 if not self.tasks[impl["task"]].get("reports"):
@@ -102,8 +108,18 @@ class Project:
                 raise Invalid(f"{c['id']}: flow path required")
             if c["status"] in ("quarantined", "deprecated") and not c.get("reason"):
                 raise Invalid(f"{c['id']}: status reason required")
-            for asset in self.assets(c):
-                inside(self.root, asset, exists=True)
+            if c.get("origin", {}).get("kind") == "discovery":
+                # Full discovery retires removed generated entries before planning;
+                # a targeted run still validates all assets when freezing.
+                for asset in [
+                    c["contract"],
+                    *c.get("assets", []),
+                    *([impl["path"]] if impl.get("path") else []),
+                ]:
+                    inside(self.root, asset)
+            else:
+                for asset in self.assets(c):
+                    inside(self.root, asset, exists=True)
             cases[c["id"]] = c
         return cases
 

@@ -2,9 +2,9 @@
 
 面向 AI Coding Agent 的通用 Android 测试工具：把自然语言需求与代码变更转为可复用的原生测试，持久化用例，执行静态检查、单元测试、设备测试与 UI 回归，并保存可核验的结果。
 
-**版本 0.1.0，已完成本地开发和模拟器自测，尚未发布 GitHub/PyPI。** 使用 Apache-2.0 许可证。实际验证范围及应用缺陷见[验证记录](docs/10-validation-2026-11-11.md)，不将未测设备写成支持承诺。
+**版本 0.2.0，已完成本地开发和模拟器自测，尚未发布 GitHub/PyPI。** 使用 Apache-2.0 许可证。实际验证范围及应用缺陷见[验证记录](docs/10-validation-2026-11-11.md)，不将未测设备写成支持承诺。
 
-[快速开始](docs/09-quickstart.md) · [完整操作与配置](docs/11-lifecycle-and-agent-integration.md) · [Agent 工作规范](AGENT_WORKFLOW.md) · [许可证](LICENSE)
+[快速开始](docs/09-quickstart.md) · [完整操作与配置](docs/11-lifecycle-and-agent-integration.md) · [自动发现与全量接管](docs/12-discovery-and-takeover.md) · [Agent 工作规范](AGENT_WORKFLOW.md) · [许可证](LICENSE)
 
 ```bash
 uv sync --frozen
@@ -20,6 +20,8 @@ uv run aat --project examples/counter-app/android-testing.yaml doctor
 Maestro 可以直接承担 UI 自动化。本工具复用它的 YAML 和 CLI，不再开发 UI 驱动。额外处理的是跨层测试：Gradle/JUnit/Lint、设备 instrumentation、SDK/AAR 宿主构建，以及用例版本、变更选择、不可变计划、源码快照和证据保留。自然语言由现有 Coding Agent 理解；固定回归不需要 LLM，也不需要自建模型服务。
 
 ## 已实现
+
+- 全量接管：扫描 Gradle 原生任务、已有测试源码和 Maestro flow，自动登记；默认全量重扫，未映射测试阻止通过。
 
 - 文件 + Git 用例库：检索、严格校验、事务保存、revision 冲突检测、历史与中断恢复。
 - 项目适配：源码 App、SDK + 宿主、APK-only；显式构建 DAG，包名/产物/探针通过配置定义。
@@ -41,7 +43,7 @@ Maestro 可以直接承担 UI 自动化。本工具复用它的 YAML 和 CLI，�
 
 ## 技术文档
 
-01–08 记录总体设计与长期目标；09–11 定义 0.1.0 的实际行为和验证边界。
+01–08 记录总体设计与长期目标；09–11 定义基础行为；12 定义 0.2.0 自动发现与全量接管。
 
 1. [范围与选型](docs/01-scope-and-decisions.md)
 2. [架构与执行流程](docs/02-architecture.md)

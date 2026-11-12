@@ -1,0 +1,22 @@
+schema_version: 1
+id: discovered.junit.7f9a330f8413cec5
+revision: 2
+status: active
+title: :app:testReleaseUnitTest
+layer: local
+contract: testing/contracts/discovered-tests.md
+implementation:
+  engine: junit
+  task: discovered_7f9a330f8413cec5
+  selector: '*'
+assets:
+- app/src/test/java/org/example/aat/counter/CounterIsolationTest.java
+- app/src/test/java/org/example/aat/counter/CounterTest.java
+timeout_seconds: 600
+required: true
+tags:
+- discovered
+- fast
+origin:
+  kind: discovery
+  reference: :app:testReleaseUnitTest

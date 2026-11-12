@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 — 2026-11-12 (local)
+
+- Discover existing Gradle Test, Android connected suites, Lint variants and Maestro flows.
+- Transactionally synchronize native suite metadata and test source fingerprints.
+- Default full-project takeover after onboarding; rescan before each full plan/run.
+- Gate unregistered sources, unknown tasks, disabled/filtered tests and partial coverage.
+- Reuse existing native task results, including device method cases.
+- Preserve source locations, assertions, quarantines and private-project boundaries.
+
 ## 0.1.0 — 2026-11-11 (local release candidate)
 
 - Persistent YAML case catalog, transactional revision saves, recovery and history.

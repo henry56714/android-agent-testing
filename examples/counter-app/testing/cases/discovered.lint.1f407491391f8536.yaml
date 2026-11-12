@@ -1,0 +1,19 @@
+schema_version: 1
+id: discovered.lint.1f407491391f8536
+revision: 1
+status: active
+title: :app:lintDebug
+layer: static
+contract: testing/contracts/discovered-tests.md
+implementation:
+  engine: lint
+  task: lint
+assets: []
+timeout_seconds: 600
+required: true
+tags:
+- discovered
+- fast
+origin:
+  kind: discovery
+  reference: :app:lintDebug

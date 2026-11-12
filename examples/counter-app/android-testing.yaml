@@ -1,27 +1,85 @@
 schema_version: 1
-project: {id: sample.counter, mode: source, root: .}
+project:
+  id: sample.counter
+  mode: source
+  root: .
 catalog: testing/cases
 suites: testing/suites
 artifacts: .aat/runs
 target:
   application_id: org.example.aat.counter
   variant: debug
-  device: {min_api: 28, serial_env: ANDROID_SERIAL}
+  device:
+    min_api: 28
+    serial_env: ANDROID_SERIAL
 tasks:
   local:
-    argv: [bash, gradle.sh, ':app:testDebugUnitTest', --console=plain]
+    argv:
+    - bash
+    - gradle.sh
+    - :app:testDebugUnitTest
+    - --console=plain
     timeout_seconds: 300
-    reports: ['app/build/test-results/testDebugUnitTest/*.xml']
+    reports:
+    - app/build/test-results/testDebugUnitTest/**/*.xml
   lint:
-    argv: [bash, gradle.sh, ':app:lintDebug', --console=plain]
+    argv:
+    - bash
+    - gradle.sh
+    - :app:lintDebug
+    - --console=plain
     timeout_seconds: 300
-    reports: [app/build/reports/lint-results-debug.xml]
+    reports:
+    - app/build/reports/lint-results-debug.xml
   build:
-    argv: [bash, gradle.sh, ':app:assembleDebug', ':app:assembleDebugAndroidTest', --console=plain]
+    argv:
+    - bash
+    - gradle.sh
+    - :app:assembleDebug
+    - :app:assembleDebugAndroidTest
+    - --console=plain
     timeout_seconds: 600
+  discovered_86baaa35d0d2d08b:
+    argv:
+    - bash
+    - gradle.sh
+    - :app:connectedDebugAndroidTest
+    - --console=plain
+    timeout_seconds: 600
+    reports:
+    - app/build/outputs/androidTest-results/connected/debug/**/*.xml
+    device: true
+  discovered_dd9e2e8986b9cdd0:
+    argv:
+    - bash
+    - gradle.sh
+    - :app:lintRelease
+    - --console=plain
+    timeout_seconds: 600
+    reports:
+    - app/build/reports/lint-results-release.xml
+  discovered_7f9a330f8413cec5:
+    argv:
+    - bash
+    - gradle.sh
+    - :app:testReleaseUnitTest
+    - --console=plain
+    timeout_seconds: 600
+    reports:
+    - app/build/test-results/testReleaseUnitTest/**/*.xml
 products:
-  app: {from_task: build, path: app/build/outputs/apk/debug/app-debug.apk}
-  instrumentation: {from_task: build, path: app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk}
+  app:
+    from_task: build
+    path: app/build/outputs/apk/debug/app-debug.apk
+  instrumentation:
+    from_task: build
+    path: app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 instrumentation:
   test_application_id: org.example.aat.counter.test
   runner: androidx.test.runner.AndroidJUnitRunner
+discovery:
+  enabled: true
+  gradle_argv:
+  - bash
+  - gradle.sh
+  manifest: testing/discovery.json

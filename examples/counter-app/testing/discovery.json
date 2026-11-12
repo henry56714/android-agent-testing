@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "key": ":app:connectedDebugAndroidTest",
+      "engine": "gradle-device",
+      "sources": [
+        "app/src/androidTest/java/org/example/aat/counter/WorkerTest.java"
+      ],
+      "reports": [
+        "app/build/outputs/androidTest-results/connected/debug/**/*.xml"
+      ],
+      "enabled": true,
+      "filters": {
+        "runner": []
+      }
+    },
+    {
+      "key": ":app:lintDebug",
+      "engine": "lint",
+      "sources": [],
+      "reports": [
+        "app/build/reports/lint-results-debug.xml"
+      ],
+      "enabled": true,
+      "filters": {}
+    },
+    {
+      "key": ":app:lintRelease",
+      "engine": "lint",
+      "sources": [],
+      "reports": [
+        "app/build/reports/lint-results-release.xml"
+      ],
+      "enabled": true,
+      "filters": {}
+    },
+    {
+      "key": ":app:testDebugUnitTest",
+      "engine": "junit",
+      "sources": [
+        "app/src/test/java/org/example/aat/counter/CounterIsolationTest.java",
+        "app/src/test/java/org/example/aat/counter/CounterTest.java"
+      ],
+      "reports": [
+        "app/build/test-results/testDebugUnitTest/**/*.xml"
+      ],
+      "enabled": true,
+      "filters": {
+        "include": [],
+        "exclude": [],
+        "fileInclude": [],
+        "fileExclude": []
+      }
+    },
+    {
+      "key": ":app:testReleaseUnitTest",
+      "engine": "junit",
+      "sources": [
+        "app/src/test/java/org/example/aat/counter/CounterIsolationTest.java",
+        "app/src/test/java/org/example/aat/counter/CounterTest.java"
+      ],
+      "reports": [
+        "app/build/test-results/testReleaseUnitTest/**/*.xml"
+      ],
+      "enabled": true,
+      "filters": {
+        "include": [],
+        "exclude": [],
+        "fileInclude": [],
+        "fileExclude": []
+      }
+    },
+    {
+      "key": "testing/maestro/increment.yaml",
+      "engine": "maestro",
+      "sources": [
+        "testing/maestro/increment.yaml"
+      ],
+      "reports": []
+    }
+  ],
+  "sources": {
+    "app/src/androidTest/java/org/example/aat/counter/WorkerTest.java": "209041badbaa05bf0e832cb59372181414a31d529baafcf0a114e0bec0d0d090",
+    "app/src/test/java/org/example/aat/counter/CounterIsolationTest.java": "9832a84e6234d34788630a288282808e845c3e18873446c4ef15641ab365b231",
+    "app/src/test/java/org/example/aat/counter/CounterTest.java": "ce9594c4f7eef4cea769cced04957aec532e05b493d78b487aa3b19e6282f186",
+    "testing/maestro/increment.yaml": "bbb9b21ce4387ce43786c82e31ba1dbc891f593054fc94ee4963b98d4d6a7984"
+  },
+  "gaps": [],
+  "excluded": [],
+  "fingerprint": "038ca5764be803ded03d3078738f5092a65df874cf2b55880c5f3a8083f53705",
+  "coverage": {
+    ":app:connectedDebugAndroidTest": [
+      "discovered.gradle-device.86baaa35d0d2d08b"
+    ],
+    ":app:lintDebug": [
+      "discovered.lint.1f407491391f8536"
+    ],
+    ":app:lintRelease": [
+      "discovered.lint.dd9e2e8986b9cdd0"
+    ],
+    ":app:testDebugUnitTest": [
+      "discovered.junit.599c6c9c82452ed3"
+    ],
+    ":app:testReleaseUnitTest": [
+      "discovered.junit.7f9a330f8413cec5"
+    ],
+    "testing/maestro/increment.yaml": [
+      "counter.ui"
+    ]
+  }
+}

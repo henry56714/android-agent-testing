@@ -1,4 +1,4 @@
-# 09 使用说明（0.1.0）
+# 09 使用说明
 
 ## 1. 安装与自测
 
@@ -34,7 +34,11 @@ adb devices -l
 
 Maestro 从其官方发布/安装说明获取；Android SDK 需安装匹配平台与 build-tools。工具本身不静默下载 SDK 或模拟器。设备序列号必须选择实际 `adb devices` 列出的设备，多个设备时不指定则阻塞。
 
-## 3. 两个源码样例
+## 3. 接管已有测试
+
+0.2.0 新接入使用 `aat init --id PROJECT`，然后 `aat discover --apply`。已有配置执行一次 `discover --apply` 开启接管；此后默认 `aat run` 每次重扫全量，具体见 [自动发现与接管](12-discovery-and-takeover.md)。项目独有 AAR 复制等步骤先配置到 task_dependencies，不能只依靠测试文件名推断。
+
+## 4. 两个源码样例
 
 ```bash
 uv run aat --project examples/counter-app/android-testing.yaml cases list
@@ -54,7 +58,7 @@ uv run aat --project examples/worker-sdk/android-testing.yaml run --device DEVIC
 
 两个样例均为本仓库自编 Java/View 工程，不代表 Compose 已验证；SDK 样例使用 project dependency。另在私有项目实测了 AAR 复制到宿主的构建 DAG，源码未复制到公共仓库。
 
-## 4. APK-only
+## 5. APK-only
 
 先构建 counter-app 的 APK，再复制到独立黑盒测试目录。输入 APK 不提交 Git。
 
@@ -66,7 +70,7 @@ uv run aat --project examples/apk-only/android-testing.yaml run --tag smoke --de
 
 不带 `--tag smoke` 会同时选择一个故意缺 instrumentation 能力的内部用例。预期 UI PASS、内部用例 BLOCKED、整体退出码 3；这是能力边界验证，不是预期全绿的套件。
 
-## 5. 计划、历史与版本
+## 6. 计划、历史与版本
 
 ```bash
 uv run aat --project examples/counter-app/android-testing.yaml plan --case counter.increment
@@ -87,7 +91,7 @@ aat replay RUN_ID --destination /new/replay-directory --execute --device DEVICE_
 aat prune
 ```
 
-## 6. 使用边界
+## 7. 使用边界
 
 instrumentation 要求精确 Class#method；构建配置选择单 APK，split/AAB 需项目自行产出可安装单 APK。只执行 active 用例，选中的其他状态报告 BLOCKED。设备在同一主机排他使用，结束时 force-stop 本次安装的 App/test 包，不自动卸载或恢复系统级状态。
 

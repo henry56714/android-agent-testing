@@ -1,0 +1,67 @@
+import groovy.json.JsonOutput
+import org.gradle.api.tasks.testing.Test
+
+// Enumerate the evaluated build, including custom Test tasks and Android variants.
+gradle.projectsEvaluated {
+    rootProject.tasks.register('aatExportTestInventory') {
+        doLast {
+            def projects = []
+            rootProject.allprojects.each { p ->
+                def sourceSets = []
+                def android = p.extensions.findByName('android')
+                if (android != null && android.hasProperty('sourceSets')) {
+                    android.sourceSets.each { s ->
+                        def dirs = []
+                        dirs.addAll(s.java.srcDirs)
+                        if (s.hasProperty('kotlin')) dirs.addAll(s.kotlin.srcDirs)
+                        dirs.add(p.file("src/${s.name}/kotlin"))
+                        sourceSets.add([name: s.name, dirs: dirs.collect { it.absolutePath }.unique()])
+                    }
+                } else {
+                    def sets = p.extensions.findByName('sourceSets')
+                    if (sets != null) sets.each { s ->
+                        sourceSets.add([name: s.name, dirs: s.allSource.srcDirs.collect { it.absolutePath }])
+                    }
+                }
+                def tasks = []
+                p.tasks.each { t ->
+                    def item = [path: t.path, name: t.name, type: t.class.name, enabled: t.enabled,
+                                hasActions: !t.actions.empty]
+                    if (t instanceof Test) {
+                        item.kind = 'junit'
+                        item.reports = [t.reports.junitXml.outputLocation.get().asFile.absolutePath + '/**/*.xml']
+                        item.filters = [include: t.filter.includePatterns as List, exclude: t.filter.excludePatterns as List,
+                                        fileInclude: t.includes as List, fileExclude: t.excludes as List]
+                        item.xmlEnabled = t.reports.junitXml.required.get()
+                        item.classDirs = t.testClassesDirs.files.collect { it.absolutePath }
+                    } else if (android != null && t.name ==~ /connected.+AndroidTest/ && t.name != 'connectedAndroidTest') {
+                        item.kind = 'gradle-device'
+                        def selectionArgs = ['class', 'notClass', 'package', 'notPackage', 'annotation',
+                                             'notAnnotation', 'size', 'numShards', 'shardIndex', 'log', 'debug', 'tests_regex']
+                        item.filters = [runner: selectionArgs.findAll { key ->
+                            android.defaultConfig.testInstrumentationRunnerArguments.containsKey(key) ||
+                            p.findProperty('android.testInstrumentationRunnerArguments.' + key) != null
+                        }]
+                        item.reports = [new File(p.layout.buildDirectory.get().asFile,
+                            'outputs/androidTest-results/connected/' + t.name.substring(9, t.name.length()-11).uncapitalize()).absolutePath + '/**/*.xml']
+                    } else if (android != null && t.name ==~ /lint[A-Z].*/ && !(t.name ==~ /lint(Vital|Fix|Analyze|Report).*/)
+                            && t.group == 'verification') {
+                        item.kind = 'lint'
+                        item.reports = [new File(p.layout.buildDirectory.get().asFile,
+                            "reports/lint-results-${t.name.substring(4).uncapitalize()}.xml").absolutePath]
+                    } else if (t.group == 'verification' || ((t instanceof Exec || t instanceof JavaExec)
+                               && t.name.toLowerCase().matches('.*(test|check).*'))) {
+                        item.kind = 'verification'
+                    } else { return }
+                    tasks.add(item)
+                }
+                projects.add([path: p.path, directory: p.projectDir.absolutePath,
+                    android: android != null, sources: sourceSets, tasks: tasks])
+            }
+            def out = new File(System.getProperty('aat.inventory.output'))
+            out.parentFile.mkdirs()
+            out.text = JsonOutput.prettyPrint(JsonOutput.toJson([schema_version: 1, projects: projects,
+                includedBuilds: gradle.includedBuilds.collect { it.projectDir.absolutePath }]))
+        }
+    }
+}
