@@ -258,7 +258,7 @@ def scan(project, inventory=None):
                 }
             )
     # Maestro entrypoints are discovered from native YAML, with child-flow graph deduplication.
-    flows, children = {}, set()
+    flows, children, edges = {}, set(), {}
     for path in files:
         if not path.endswith((".yaml", ".yml")):
             continue
@@ -281,7 +281,9 @@ def scan(project, inventory=None):
             target = flow if isinstance(flow, str) else flow.get("file") if isinstance(flow, dict) else None
             if target and "${" not in target:
                 try:
-                    children.add(relative(str(Path(parent).parent / target)))
+                    child = relative(str(Path(parent).parent / target))
+                    children.add(child)
+                    edges.setdefault(parent, set()).add(child)
                 except Invalid:
                     gaps.append({"item": parent, "reason": "EXTERNAL_MAESTRO_FLOW"})
             elif target:
@@ -294,6 +296,14 @@ def scan(project, inventory=None):
     roots = set(flows) - children
     if flows and not roots:
         gaps.append({"item": "maestro", "reason": "FLOW_GRAPH_HAS_NO_ENTRYPOINT"})
+    reachable, pending = set(), list(roots)
+    while pending:
+        flow = pending.pop()
+        if flow not in reachable:
+            reachable.add(flow)
+            pending.extend(edges.get(flow, set()))
+    for path in sorted(set(flows) - reachable):
+        gaps.append({"item": path, "reason": "UNREACHABLE_FLOW"})
     for path in sorted(roots):
         if not ignored(path):
             entries.append({"key": path, "engine": "maestro", "sources": [path], "reports": []})

@@ -303,3 +303,13 @@ def test_device_case_does_not_reuse_same_selector_from_other_module(project_fact
     c["implementation"] = {"engine": "instrumentation", "selector": "Example#works", "path": "test_runner.py"}
     monkeypatch.setattr(session, "prepare_device", lambda: {"available": False, "reason": "DEVICE_NOT_READY"})
     assert session.case(c)["outcome"] == "BLOCKED"
+
+
+def test_disconnected_flow_cycle_is_not_silently_omitted(project_factory):
+    p = configure(project_factory())
+    inv = native(p)
+    (p.root / "main.yaml").write_text("appId: org.test\n---\n- assertVisible: Hello\n")
+    (p.root / "a.yaml").write_text("appId: org.test\n---\n- runFlow: b.yaml\n")
+    (p.root / "b.yaml").write_text("appId: org.test\n---\n- runFlow: a.yaml\n")
+    gaps = scan(p, inv)["gaps"]
+    assert {g["item"] for g in gaps if g["reason"] == "UNREACHABLE_FLOW"} == {"a.yaml", "b.yaml"}

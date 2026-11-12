@@ -84,7 +84,7 @@ discovery:
 
 ## 2026-11-12 验证记录
 
-- Python 3.13.12 和 3.11.15：各 101 项通过；Ruff 检查及格式检查通过。
+- Python 3.13.12 和 3.11.15：各 102 项通过；Ruff 检查及格式检查通过。
 - 回归覆盖：任务导入、幂等同步、新测试自动登记、revision 更新、未知测试阻塞、禁用/过滤检测、子 flow、删除入口、局部运行标记、事务回滚、忽略目录测试、完整报告范围、隔离状态保留、设备结果复用与跨模块隔离、人工排除阻塞、已有文件冲突保护。
 - Gradle 8.10 / AGP 8.7.3 公开样例发现 6 个入口：Debug/Release JVM、Debug/Release Lint、完整设备套件和 UI。接管后新增 CounterIsolationTest，不手写 case YAML；默认 run 自动扫描，并在 Debug/Release 报告中均出现 instancesDoNotShareState。
 - 源码环境全量 run：`20261112T010352-0f423b865b63`，9 个目录项 PASS，6 个原生入口全部通过，full_project_passed=true。
