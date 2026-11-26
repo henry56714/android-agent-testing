@@ -199,4 +199,4 @@ Maestro、Gradle、Android SDK、JDK、JUnit、AndroidX 为外部执行/构建�
 
 Android 工作流的配置依据为 [emulator-runner 官方仓库](https://github.com/ReactiveCircus/android-emulator-runner)、[Gradle Actions 官方仓库](https://github.com/gradle/actions) 和 [Maestro 2.12.1 官方发布](https://github.com/mobile-dev-inc/Maestro/releases/tag/cli-2.12.1)；Maestro ZIP 固定版本并校验 SHA-256。运行事实以上面的本机证据为准，不将工作流配置等同于远程执行成功。
 
-运行流水由机器报告保存，项目只维护 README 与本文；不再新增独立阶段报告或重复使用指南。本轮未创建远程仓库、未发布软件包。
+运行流水由机器报告保存，项目只维护 README 与本文；不再新增独立阶段报告或重复使用指南。2026-11-12 整改自测时未创建远程仓库；2026-11-26 已将源码推送至 [GitHub 私有仓库](https://github.com/henry56714/android-agent-testing)，尚未发布软件包。远程 CI 的实际状态以 [Actions 运行记录](https://github.com/henry56714/android-agent-testing/actions)为准。

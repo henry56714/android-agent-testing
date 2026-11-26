@@ -2,13 +2,15 @@
 
 面向 Coding Agent 的 Android 测试 CLI：管理可复用用例，调用项目已有的 Gradle/JUnit/Lint、ADB instrumentation 和 Maestro，并保存计划、源码快照与执行证据。自然语言由调用方 Agent 理解，固定回归无需模型服务。
 
-当前代码版本 **0.3.0**，配置 schema 为 **1**。本地开发阶段，未配置 Git 远程；本仓库不提供已发布包的安装地址。实现、已知问题和整改方案集中在[技术方案](docs/technical-design.md)。
+当前代码版本 **0.3.0**，配置 schema 为 **1**。源码托管于 [GitHub](https://github.com/henry56714/android-agent-testing)，当前为私有仓库，需要仓库访问权限；尚未发布软件包。实现、已知问题和整改方案集中在[技术方案](docs/technical-design.md)。
 
 ## 安装与首次检查
 
-需要 Python 3.11+ 和 uv。以下命令在本工具仓库根目录执行，不需要 Android 设备：
+需要 Python 3.11+ 和 uv。通过已认证的 GitHub 账号克隆仓库后执行，不需要 Android 设备；已有本地仓库可跳过前两行：
 
 ```bash
+git clone https://github.com/henry56714/android-agent-testing.git
+cd android-agent-testing
 uv sync --frozen
 uv run aat --help
 uv run aat --project examples/counter-app/android-testing.yaml cases validate
