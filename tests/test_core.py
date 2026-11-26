@@ -196,7 +196,7 @@ def test_cancel_persists_result(project_factory):
         child.send_signal(signal.SIGTERM)
         out, err = child.communicate(timeout=5)
         assert child.returncode == 130, err
-        result = json.loads(out)
+        result = json.loads(out)["data"]
         assert result["cases"][0]["outcome"] == "CANCELLED"
         assert (p.artifacts / result["run_id"] / "result.json").exists()
     finally:
@@ -267,9 +267,9 @@ def test_instrumentation_complete_and_truncated():
 def test_cli_invalid_and_report(project_factory, capsys):
     p = project_factory()
     assert main(["--project", str(p.path), "cases", "validate"]) == 0
-    assert json.loads(capsys.readouterr().out)["valid"]
+    assert json.loads(capsys.readouterr().out)["data"]["valid"]
     assert main(["--project", str(p.path), "plan", "--case", "absent"]) == 2
-    assert json.loads(capsys.readouterr().out)["error"] == "INVALID_INPUT"
+    assert json.loads(capsys.readouterr().out)["error"]["code"] == "INVALID_INPUT"
 
 
 @pytest.mark.parametrize(

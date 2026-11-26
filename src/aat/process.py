@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -63,3 +64,14 @@ def execute(argv, cwd, log, timeout, env=None, max_log_bytes=16 * 1024 * 1024):
             p.stdout.close()
     result["duration_seconds"] = round(time.monotonic() - start, 3)
     return result
+
+
+def query(argv, cwd, timeout=15):
+    """Bounded short query using the same cancellation/process-tree contract as tests."""
+    with tempfile.TemporaryDirectory(prefix="aat-query-") as temporary:
+        log = Path(temporary) / "query.log"
+        result = execute(argv, cwd, log, timeout)
+        text = log.read_text(errors="replace")
+        if result["reason"] or result.get("log_truncated"):
+            return -1, result["reason"] or "QUERY_OUTPUT_TRUNCATED"
+        return result["returncode"], text

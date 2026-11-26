@@ -64,12 +64,15 @@ CONFIG = obj(
         "discovery": obj(
             {
                 "enabled": BOOL,
+                "auto_sync": BOOL,
                 "gradle_argv": SS,
                 "manifest": S,
                 "exclude": {
                     "type": "array",
                     "items": obj({"pattern": S, "reason": S}, ["pattern", "reason"]),
                 },
+                "task_reports": {"type": "object", "additionalProperties": SS},
+                "task_sources": {"type": "object", "additionalProperties": SS},
                 "task_dependencies": {"type": "object", "additionalProperties": SS},
                 "task_cases": {"type": "object", "additionalProperties": SS},
                 "source_cases": {"type": "object", "additionalProperties": SS},

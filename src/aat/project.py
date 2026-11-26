@@ -20,6 +20,13 @@ class Project:
             raise Invalid("Artifacts cannot be project root")
         if catalog and not allow_pending and (self.artifacts / "catalog-transaction.json").exists():
             raise Invalid("Incomplete catalog transaction; run cases recover before reading")
+        enabled_policies = [key for key, value in self.config.get("device_policy", {}).items() if value]
+        if enabled_policies:
+            raise Invalid(
+                "Unsupported device_policy: "
+                + ", ".join(enabled_policies)
+                + "; remove enabled policies. Only package force-stop cleanup is implemented."
+            )
         self.tasks = self.config.get("tasks", {})
         for pattern in self.config.get("privacy", {}).get("patterns", []):
             try:
@@ -45,7 +52,7 @@ class Project:
                 inside(self.root, product["path"])
         self.cases = self._catalog() if catalog else {}
         for spec in self.config.get("capabilities", {}).values():
-            if spec.get("depends_on") or spec.get("reports"):
+            if spec.get("depends_on") or spec.get("reports") or spec.get("device"):
                 raise Invalid("Capability probes use argv/timeout only")
 
     def order(self, names):

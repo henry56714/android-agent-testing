@@ -137,7 +137,7 @@ def test_plan_reloaded_in_fresh_process(project_factory):
         check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
-    assert json.loads(r.stdout)["gate"] == "passed"
+    assert json.loads(r.stdout)["data"]["gate"] == "passed"
 
 
 def test_timeout_kills_descendant(project_factory):

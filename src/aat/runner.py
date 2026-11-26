@@ -2,147 +2,23 @@ from __future__ import annotations
 
 import glob
 import hashlib
-import json
 import os
 import re
 import shutil
 import signal
-import uuid
 from contextlib import ExitStack
-from datetime import UTC, datetime
 from pathlib import Path
 
-from . import __version__
-from .device import inspect_device, query, tool
-from .lifecycle import excluded, redact, snapshot_source
+from .device import find_aapt, inspect_device, query, tool
+from .engines import execute_case
+from .lifecycle import Redactor, redact
+from .planner import freeze as freeze
+from .planner import load_plan
+from .planner import run_directory as run_directory
 from .process import execute
-from .results import export_report, gate, instrumentation, junit, lint
+from .results import export_report, gate
+from .source import source_state as source_state
 from .storage import Invalid, digest, inside, lock, write_json
-
-
-def source_state(project):
-    code, listing = query(
-        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], project.root
-    )
-    # A standalone project may live inside an enclosing repository's ignored
-    # directory (e.g. a restored snapshot); successful Git with no files is not
-    # evidence that the project has no source inputs.
-    if code or not listing:
-        paths = [
-            p.relative_to(project.root).as_posix()
-            for p in project.root.rglob("*")
-            if p.is_file()
-            and not set(p.relative_to(project.root).parts).intersection(
-                {".git", ".aat", ".venv", "build", "__pycache__", ".gradle"}
-            )
-        ]
-    else:
-        paths = listing.split("\0")
-    files = {}
-    for name in sorted(set(paths)):
-        if not name or excluded(project, name):
-            continue
-        p = inside(project.root, name)
-        if p.is_relative_to(project.artifacts) or ".aat" in p.relative_to(project.root).parts:
-            continue
-        if p.is_file():
-            files[name] = digest(p)
-        elif not p.exists():
-            files[name] = "deleted"
-    code, commit = query(["git", "rev-parse", "HEAD"], project.root)
-    return {
-        "commit": commit.strip() if code == 0 else None,
-        "files": files,
-        "fingerprint": hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest(),
-    }
-
-
-def freeze(project, cases, profile="change", discovery=None):
-    if discovery is not None:
-        # Run native device suites first; exact-method catalog entries can then
-        # reuse their already completed results instead of controlling the device twice.
-        cases = sorted(cases, key=lambda c: c["implementation"]["engine"] != "gradle-device")
-    run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:12]
-    with lock(project.artifacts / ".catalog.lock"):
-        registry_path = project.artifacts / "case-revisions.json"
-        registry = json.loads(registry_path.read_text()) if registry_path.exists() else {}
-        assets = {}
-        for c in cases:
-            hashes = {a: digest(inside(project.root, a, exists=True)) for a in project.assets(c)}
-            signature = hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()
-            old = registry.get(c["id"])
-            if old and (
-                c["revision"] < old["revision"]
-                or (c["revision"] == old["revision"] and old["signature"] != signature)
-            ):
-                raise Invalid(f"Case content changed without a newer revision: {c['id']}")
-            registry[c["id"]] = {"revision": c["revision"], "signature": signature}
-            assets.update(hashes)
-        for product in project.config.get("products", {}).values():
-            if "input_path" in product:
-                name = str(inside(project.root, product["input_path"]).relative_to(project.root))
-                assets[name] = digest(inside(project.root, name, exists=True))
-        state = source_state(project)
-        directory = project.artifacts / run_id
-        directory.mkdir(parents=True)
-        snapshot_source(project, state, directory)
-        for name in assets:
-            dest = directory / "snapshot" / name
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(inside(project.root, name), dest)
-        shutil.copy2(project.path, directory / "project.yaml")
-        plan = {
-            "schema_version": 1,
-            "run_id": run_id,
-            "project_id": project.config["project"]["id"],
-            "profile": profile,
-            "tool_version": __version__,
-            "config_sha256": digest(project.path),
-            "source": state,
-            "assets": assets,
-            "cases": cases,
-            "source_snapshot": True,
-            "discovery": discovery,
-            "excluded_cases": [
-                {"id": c["id"], "reason": "outside_requested_selection"}
-                for c in project.cases.values()
-                if c["id"] not in {x["id"] for x in cases}
-            ],
-            "reproduction_limits": [
-                "Source snapshot excludes Git-ignored and explicitly excluded files; external SDK/tools/secrets must be supplied.",
-                "Dynamic helpers must be declared in assets; API/device coverage is not inferred.",
-            ],
-        }
-        write_json(directory / "plan.json", plan)
-        write_json(registry_path, registry)
-        return plan
-
-
-def run_directory(project, run_id):
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+", run_id):
-        raise Invalid("Invalid run ID")
-    directory = inside(project.artifacts, run_id)
-    if not (directory / "plan.json").is_file():
-        raise Invalid("Run plan not found")
-    return directory
-
-
-def load_plan(project, run_id):
-    directory = run_directory(project, run_id)
-    plan = json.loads((directory / "plan.json").read_text())
-    if digest(project.path) != plan["config_sha256"]:
-        raise Invalid("STALE_PLAN: project configuration changed")
-    for name, sha in plan["assets"].items():
-        p = inside(project.root, name, exists=True)
-        if digest(p) != sha or digest(inside(directory / "snapshot", name, exists=True)) != sha:
-            raise Invalid(f"STALE_PLAN: asset changed: {name}")
-    if source_state(project)["fingerprint"] != plan["source"]["fingerprint"]:
-        raise Invalid("STALE_PLAN: source inputs changed; create a new plan")
-    # Prevent accidental edits to frozen executable metadata.
-    for c in plan["cases"]:
-        if c != project.cases.get(c["id"]):
-            raise Invalid("STALE_PLAN: frozen case metadata mismatch")
-    return directory, plan
 
 
 class Session:
@@ -225,15 +101,7 @@ class Session:
         return self.device
 
     def aapt(self):
-        found = shutil.which("aapt")
-        if found:
-            return found
-        adb = shutil.which(tool(self.p, "adb"))
-        sdk = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")
-        if not sdk and adb:
-            sdk = str(Path(adb).resolve().parent.parent)
-        candidates = sorted(Path(sdk).glob("build-tools/*/aapt")) if sdk else []
-        return str(candidates[-1]) if candidates else None
+        return find_aapt(self.p)
 
     def install(self):
         if self.installed:
@@ -291,180 +159,12 @@ class Session:
         return errors
 
     def case(self, c):
-        result = {
-            "id": c["id"],
-            "revision": c["revision"],
-            "required": c.get("required", True),
-            "outcome": "ERROR",
-            "reason_code": "NOT_EXECUTED",
-            "attempts": [],
-            "evidence": [],
-        }
-
-        def finish(outcome, reason, details=None):
-            result.update(outcome=outcome, reason_code=reason)
-            if details is not None:
-                result["details"] = details
-            return result
-
-        if c["status"] != "active":
-            return finish("BLOCKED", "CASE_" + c["status"].upper())
-        applicability = c.get("applicability", {})
-        for key, value in (
-            ("modes", self.p.config["project"]["mode"]),
-            ("variants", self.p.config.get("target", {}).get("variant")),
-        ):
-            if applicability.get(key) and value not in applicability[key]:
-                return finish("SKIPPED", "NOT_APPLICABLE")
-        custom = self.p.config.get("capabilities", {})
-        unsupported = set(c.get("requires", [])) - {"device", "ui_accessibility"} - set(custom)
-        if unsupported:
-            return finish("BLOCKED", "UNSUPPORTED_CAPABILITY", sorted(unsupported))
-        for capability in sorted(set(c.get("requires", [])) & set(custom)):
-            if capability not in self.capabilities:
-                spec = custom[capability]
-                self.capabilities[capability] = self.command(
-                    spec["argv"], f"capabilities/{capability}", spec["timeout_seconds"]
-                )
-            probe = self.capabilities[capability]
-            if probe["reason"] or probe["returncode"] != 0:
-                return finish("BLOCKED", "CAPABILITY_PROBE_FAILED", {"capability": capability})
-        missing = [
-            v for v in self.p.config.get("environment", {}).get("references", []) if v not in os.environ
-        ]
-        if missing:
-            return finish("BLOCKED", "MISSING_ENVIRONMENT", missing)
-        impl = c["implementation"]
-        engine = impl["engine"]
-        if engine == "instrumentation":
-            for name, completed in self.tasks.items():
-                suites = [
-                    s
-                    for s in self.p.cases.values()
-                    if s["implementation"]["engine"] == "gradle-device"
-                    and s["implementation"].get("task") == name
-                    and impl.get("path") in s.get("assets", [])
-                ]
-                variant = self.p.config.get("target", {}).get("variant")
-                if variant:
-                    suites = [
-                        s
-                        for s in suites
-                        if s.get("origin", {})
-                        .get("reference", "")
-                        .lower()
-                        .endswith("connected" + variant.lower() + "androidtest")
-                    ]
-                if not suites:
-                    continue
-                if (
-                    not self.p.tasks[name].get("device")
-                    or completed.get("reason")
-                    or not completed.get("reports")
-                ):
-                    continue
-                outcome, reason, details = junit(completed["reports"], impl["selector"])
-                if reason == "TEST_NOT_DISCOVERED":
-                    continue
-                if completed["returncode"] != 0 and outcome == "PASS":
-                    outcome, reason = "ERROR", "ENGINE_EXIT_ERROR"
-                result["attempts"].append({k: v for k, v in completed.items() if k != "reports"})
-                result["evidence"] = [str(p.relative_to(self.directory)) for p in completed["reports"]]
-                result["reused_native_task"] = name
-                return finish(outcome, reason, details)
-        if engine in ("junit", "lint", "gradle-device"):
-            if self.p.config["project"]["mode"] == "apk":
-                return finish("BLOCKED", "SOURCE_REQUIRED")
-            if engine == "gradle-device":
-                device = self.prepare_device()
-                if not device["available"]:
-                    return finish("BLOCKED", device["reason"])
-            r = self.task(impl["task"])
-            result["attempts"].append({k: v for k, v in r.items() if k != "reports"})
-            if r["reason"]:
-                return finish("ERROR", r["reason"])
-            if not r["reports"]:
-                return finish("ERROR", "REPORT_MISSING")
-            result["evidence"] = [str(p.relative_to(self.directory)) for p in r["reports"]]
-            parsed = (
-                junit(r["reports"], impl["selector"])
-                if engine in ("junit", "gradle-device")
-                else lint(r["reports"], impl.get("fail_severities", ["Error", "Fatal"]))
-            )
-        else:
-            if engine == "maestro" and not shutil.which(tool(self.p, "maestro")):
-                return finish("BLOCKED", "MAESTRO_UNAVAILABLE")
-            device = self.prepare_device()
-            if not device["available"]:
-                return finish("BLOCKED", device["reason"])
-            if engine == "instrumentation" and (
-                not self.p.config.get("instrumentation")
-                or "instrumentation" not in self.p.config.get("products", {})
-            ):
-                return finish("BLOCKED", "INSTRUMENTATION_REQUIRED")
-            install_error = self.install()
-            if install_error:
-                return finish("BLOCKED", install_error)
-            directory = self.directory / "cases" / c["id"]
-            directory.mkdir(parents=True, exist_ok=True)
-            if engine == "maestro":
-                report = directory / "maestro.xml"
-                argv = [
-                    tool(self.p, "maestro"),
-                    "--device",
-                    device["serial"],
-                    "test",
-                    "--format",
-                    "junit",
-                    "--output",
-                    str(report),
-                    "--test-output-dir",
-                    str(directory / "maestro"),
-                    str(inside(self.p.root, impl["path"])),
-                ]
-                r = self.command(argv, f"cases/{c['id']}", c["timeout_seconds"])
-                parsed = junit([report]) if report.exists() else ("ERROR", "REPORT_MISSING", [])
-            else:
-                spec = self.p.config["instrumentation"]
-                runner = spec["test_application_id"] + "/" + spec["runner"]
-                code, runners = query(
-                    [tool(self.p, "adb"), "-s", device["serial"], "shell", "pm", "list", "instrumentation"],
-                    self.p.root,
-                )
-                expected = f"instrumentation:{runner} (target={self.p.config['target']['application_id']})"
-                if code or expected not in runners:
-                    return finish("BLOCKED", "INSTRUMENTATION_TARGET_MISMATCH")
-                argv = [
-                    tool(self.p, "adb"),
-                    "-s",
-                    device["serial"],
-                    "shell",
-                    "am",
-                    "instrument",
-                    "-w",
-                    "-r",
-                    "-e",
-                    "class",
-                    impl["selector"],
-                    runner,
-                ]
-                r = self.command(argv, f"cases/{c['id']}", c["timeout_seconds"])
-                parsed = instrumentation(Path(r["log"]).read_text(errors="replace"), impl["selector"])
-            result["attempts"].append(r)
-            result["evidence"] = [
-                str(p.relative_to(self.directory)) for p in directory.rglob("*") if p.is_file()
-            ]
-            if r["reason"]:
-                return finish("ERROR", r["reason"])
-        outcome, reason, details = parsed
-        if r["returncode"] != 0 and outcome not in ("FAIL", "ERROR"):
-            return finish("ERROR", "ENGINE_EXIT_ERROR", details)
-        return finish(outcome, reason, details)
+        return execute_case(self, c)
 
 
 def run(project, run_id, serial=None):
-    directory, plan = load_plan(project, run_id)
     with lock(project.artifacts / ".execution.lock"):
+        directory, plan = load_plan(project, run_id)
         if (directory / "started.json").exists():
             raise Invalid("Run already started; create a new plan to retry without overwriting history")
         write_json(directory / "started.json", {"pid": os.getpid(), "state": "RUNNING"})
@@ -478,6 +178,7 @@ def run(project, run_id, serial=None):
             "gaps": [],
         }
         session = Session(project, directory, serial)
+        redactor = Redactor(project)
         old_signal = signal.getsignal(signal.SIGTERM)
 
         def cancel(*_):
@@ -498,7 +199,7 @@ def run(project, run_id, serial=None):
                         "message": str(e),
                     }
                 result["cases"].append(r)
-                write_json(directory / "progress.json", result)
+                write_json(directory / "progress.json", redactor.values(result))
         except KeyboardInterrupt:
             completed = {c["id"] for c in result["cases"]}
             for c in plan["cases"]:
@@ -565,6 +266,7 @@ def run(project, run_id, serial=None):
                 }
             )
         result = redact(project, directory, result)
+        write_json(directory / "progress.json", result)
         result["evidence_manifest"] = {}
         for c in result["cases"]:
             for relative in c.get("evidence", []):

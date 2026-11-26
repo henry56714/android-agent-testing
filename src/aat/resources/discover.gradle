@@ -1,32 +1,61 @@
 import groovy.json.JsonOutput
 import org.gradle.api.tasks.testing.Test
+import org.gradle.api.provider.Provider
+import org.gradle.api.file.FileSystemLocation
 
-// Enumerate the evaluated build, including custom Test tasks and Android variants.
+// Read evaluated task outputs and variant/source-set relationships. Unknown
+// adapters stay explicit gaps; there is no guessed build/reports fallback.
 gradle.projectsEvaluated {
     rootProject.tasks.register('aatExportTestInventory') {
         doLast {
-            def projects = []
-            rootProject.allprojects.each { p ->
-                def sourceSets = []
-                def android = p.extensions.findByName('android')
-                if (android != null && android.hasProperty('sourceSets')) {
-                    android.sourceSets.each { s ->
-                        def dirs = []
+            def fileValue = { value ->
+                if (value instanceof Provider) value = value.orNull
+                if (value instanceof FileSystemLocation) value = value.asFile
+                value instanceof File ? value : null
+            }
+            def sourceDirs = { sets ->
+                def dirs = []
+                sets.each { s ->
+                    if (s.hasProperty('allSource')) dirs.addAll(s.allSource.srcDirs)
+                    else {
                         dirs.addAll(s.java.srcDirs)
                         if (s.hasProperty('kotlin')) dirs.addAll(s.kotlin.srcDirs)
-                        dirs.add(p.file("src/${s.name}/kotlin"))
-                        sourceSets.add([name: s.name, dirs: dirs.collect { it.absolutePath }.unique()])
                     }
-                } else {
-                    def sets = p.extensions.findByName('sourceSets')
-                    if (sets != null) sets.each { s ->
-                        sourceSets.add([name: s.name, dirs: s.allSource.srcDirs.collect { it.absolutePath }])
-                    }
+                }
+                dirs.collect { it.absolutePath }.unique().sort()
+            }
+            def projects = []
+            rootProject.allprojects.each { p ->
+                def android = p.extensions.findByName('android')
+                def nativeSets = android != null && android.hasProperty('sourceSets') ? android.sourceSets : p.extensions.findByName('sourceSets')
+                def sourceSets = nativeSets == null ? [] : nativeSets.collect { s ->
+                    [name: s.name, dirs: sourceDirs([s])]
+                }
+                def variantSources = [:]
+                def pluginVersion = null
+                if (android != null) {
+                    try {
+                        pluginVersion = Class.forName('com.android.Version', true, android.class.classLoader)
+                            .getField('ANDROID_GRADLE_PLUGIN_VERSION').get(null)
+                    } catch (Exception ignored) { }
+                    try {
+                        def variants = android.hasProperty('applicationVariants') ? android.applicationVariants : android.libraryVariants
+                        variants.each { variant ->
+                            if (variant.unitTestVariant != null) {
+                                def test = variant.unitTestVariant
+                                variantSources['test' + test.name.capitalize()] = sourceDirs(test.sourceSets)
+                            }
+                            if (variant.testVariant != null) {
+                                def test = variant.testVariant
+                                variantSources['connected' + test.name.capitalize()] = sourceDirs(test.sourceSets)
+                            }
+                        }
+                    } catch (Exception ignored) { /* Missing variant API is an explicit mapping gap below. */ }
                 }
                 def tasks = []
                 p.tasks.each { t ->
                     def item = [path: t.path, name: t.name, type: t.class.name, enabled: t.enabled,
-                                hasActions: !t.actions.empty]
+                                hasActions: !t.actions.empty, reportOrigin: 'task-model']
                     if (t instanceof Test) {
                         item.kind = 'junit'
                         item.reports = [t.reports.junitXml.outputLocation.get().asFile.absolutePath + '/**/*.xml']
@@ -34,6 +63,16 @@ gradle.projectsEvaluated {
                                         fileInclude: t.includes as List, fileExclude: t.excludes as List]
                         item.xmlEnabled = t.reports.junitXml.required.get()
                         item.classDirs = t.testClassesDirs.files.collect { it.absolutePath }
+                        if (android != null) {
+                            item.sourceDirs = variantSources[t.name]
+                            item.sourceOrigin = 'android-variant-model'
+                        } else {
+                            def matched = nativeSets == null ? [] : nativeSets.findAll { s ->
+                                !s.output.classesDirs.files.intersect(t.testClassesDirs.files).empty
+                            }
+                            item.sourceDirs = matched.empty ? null : sourceDirs(matched)
+                            item.sourceOrigin = 'test-class-directories'
+                        }
                     } else if (android != null && t.name ==~ /connected.+AndroidTest/ && t.name != 'connectedAndroidTest') {
                         item.kind = 'gradle-device'
                         def selectionArgs = ['class', 'notClass', 'package', 'notPackage', 'annotation',
@@ -42,25 +81,33 @@ gradle.projectsEvaluated {
                             android.defaultConfig.testInstrumentationRunnerArguments.containsKey(key) ||
                             p.findProperty('android.testInstrumentationRunnerArguments.' + key) != null
                         }]
-                        item.reports = [new File(p.layout.buildDirectory.get().asFile,
-                            'outputs/androidTest-results/connected/' + t.name.substring(9, t.name.length()-11).uncapitalize()).absolutePath + '/**/*.xml']
+                        def results = t.hasProperty('resultsDir') ? fileValue(t.resultsDir) : null
+                        item.reports = results == null ? [] : [results.absolutePath + '/**/*.xml']
+                        item.sourceDirs = variantSources[t.name]
+                        item.sourceOrigin = 'android-variant-model'
                     } else if (android != null && t.name ==~ /lint[A-Z].*/ && !(t.name ==~ /lint(Vital|Fix|Analyze|Report).*/)
                             && t.group == 'verification') {
                         item.kind = 'lint'
-                        item.reports = [new File(p.layout.buildDirectory.get().asFile,
-                            "reports/lint-results-${t.name.substring(4).uncapitalize()}.xml").absolutePath]
+                        def reportTask = p.tasks.findByName('lintReport' + t.name.substring(4))
+                        def xml = reportTask != null && reportTask.hasProperty('xmlReportOutputFile') ? fileValue(reportTask.xmlReportOutputFile) : null
+                        item.reports = xml == null ? [] : [xml.absolutePath]
+                        item.xmlEnabled = reportTask != null && reportTask.hasProperty('xmlReportEnabled') && reportTask.xmlReportEnabled.get()
+                        item.reportTask = reportTask == null ? null : reportTask.path
                     } else if (t.group == 'verification' || ((t instanceof Exec || t instanceof JavaExec)
                                && t.name.toLowerCase().matches('.*(test|check).*'))) {
                         item.kind = 'verification'
                     } else { return }
+                    if (item.kind in ['junit', 'gradle-device'] && item.sourceDirs == null) item.sourceOrigin = 'unavailable'
+                    if (item.kind != 'verification' && item.reports.empty) item.reportOrigin = 'unavailable'
                     tasks.add(item)
                 }
                 projects.add([path: p.path, directory: p.projectDir.absolutePath,
-                    android: android != null, sources: sourceSets, tasks: tasks])
+                    android: android != null, androidPluginVersion: pluginVersion, sources: sourceSets, tasks: tasks])
             }
             def out = new File(System.getProperty('aat.inventory.output'))
             out.parentFile.mkdirs()
-            out.text = JsonOutput.prettyPrint(JsonOutput.toJson([schema_version: 1, projects: projects,
+            out.text = JsonOutput.prettyPrint(JsonOutput.toJson([schema_version: 1, model_version: 2,
+                gradleVersion: gradle.gradleVersion, projects: projects,
                 includedBuilds: gradle.includedBuilds.collect { it.projectDir.absolutePath }]))
         }
     }

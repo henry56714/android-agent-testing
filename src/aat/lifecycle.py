@@ -112,37 +112,41 @@ def prune(project, days=None, apply=False):
                     shutil.rmtree(child)
             for evidence in r.get("evidence_manifest", {}).values():
                 evidence["state"] = "expired"
+            (p.parent / "progress.json").unlink(missing_ok=True)
             r["artifacts_expired"] = True
             write_json(p, r)
         return {"dry_run": not apply, "runs": candidates, "days": days}
 
 
-def redact(project, directory, result):
-    settings = project.config.get("privacy", {})
-    secrets = [os.environ[k] for k in settings.get("redact_env", []) if os.environ.get(k)]
-    patterns = settings.get("patterns", [])
-    for pattern in patterns:
-        re.compile(pattern)
+class Redactor:
+    """Sanitize report values before persistence; snapshots stay private."""
 
-    def clean(text):
-        for value in secrets:
-            text = text.replace(value, "[REDACTED]")
-        for pattern in patterns:
-            text = re.sub(pattern, "[REDACTED]", text)
+    def __init__(self, project):
+        settings = project.config.get("privacy", {})
+        self.secrets = [os.environ[k] for k in settings.get("redact_env", []) if os.environ.get(k)]
+        self.patterns = [re.compile(p) for p in settings.get("patterns", [])]
+
+    def text(self, text):
+        for secret in self.secrets:
+            text = text.replace(secret, "[REDACTED]")
+        for pattern in self.patterns:
+            text = pattern.sub("[REDACTED]", text)
         return text
 
+    def values(self, value):
+        if isinstance(value, str):
+            return self.text(value)
+        if isinstance(value, list):
+            return [self.values(item) for item in value]
+        if isinstance(value, dict):
+            return {self.text(k): self.values(v) for k, v in value.items()}
+        return value
+
+
+def redact(project, directory, result):
+    cleaner = Redactor(project)
     for folder in ("tasks", "cases", "capabilities", "install"):
         for path in (directory / folder).rglob("*"):
             if path.is_file() and path.suffix in (".log", ".txt", ".json", ".xml", ".html"):
-                path.write_text(clean(path.read_text(errors="replace")))
-
-    def values(value):
-        if isinstance(value, str):
-            return clean(value)
-        if isinstance(value, list):
-            return [values(x) for x in value]
-        if isinstance(value, dict):
-            return {k: values(v) for k, v in value.items()}
-        return value
-
-    return values(result)
+                path.write_text(cleaner.text(path.read_text(errors="replace")))
+    return cleaner.values(result)

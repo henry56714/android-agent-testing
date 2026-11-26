@@ -155,10 +155,10 @@ def test_failed_capability_blocks(project_factory):
 def test_profiles_and_read_history_without_current_cases(project_factory, capsys):
     p = project_factory(config_update=lambda c: c.update(profiles={"fast": {"tags": ["smoke"]}}))
     assert main(["--project", str(p.path), "run", "--profile", "fast"]) == 0
-    result = json.loads(capsys.readouterr().out)
+    result = json.loads(capsys.readouterr().out)["data"]
     (p.root / "contract.md").unlink()
     assert main(["--project", str(p.path), "report", result["run_id"]]) == 0
-    assert json.loads(capsys.readouterr().out)["gate"] == "passed"
+    assert json.loads(capsys.readouterr().out)["data"]["gate"] == "passed"
 
 
 def test_nested_maestro_dependencies(project_factory):
@@ -181,7 +181,7 @@ def test_init_and_schema_without_existing_project(tmp_path, capsys):
     assert main(["--project", str(cfg), "init", "--id", "new.app"]) == 2
     capsys.readouterr()
     assert main(["schema", "case"]) == 0
-    assert json.loads(capsys.readouterr().out)["additionalProperties"] is False
+    assert json.loads(capsys.readouterr().out)["data"]["additionalProperties"] is False
 
 
 def test_history_rejects_path_traversal(project_factory):
@@ -217,10 +217,11 @@ def test_unmapped_diff_expands_to_full_catalog(project_factory, monkeypatch, cap
     e["case"].update(id="test.other", revision=1, impact={"paths": ["lib/**"]})
     save(p, e, 0)
     monkeypatch.setattr(
-        "aat.cli.query", lambda argv, cwd: (0, "src/test.java\nbuild.gradle\n") if "diff" in argv else (0, "")
+        "aat.selection.query",
+        lambda argv, cwd: (0, "src/test.java\nbuild.gradle\n") if "diff" in argv else (0, ""),
     )
     assert main(["--project", str(p.path), "plan", "--base", "HEAD"]) == 0
-    plan = json.loads(capsys.readouterr().out)
+    plan = json.loads(capsys.readouterr().out)["data"]
     assert len(plan["cases"]) == 2
 
 

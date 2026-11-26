@@ -138,10 +138,10 @@ def test_default_takeover_run_scans_all_and_partial_is_labelled(project_factory,
     reconcile(p, inv)
     monkeypatch.setattr("aat.discovery.native_inventory", lambda _: inv)
     assert main(["--project", str(p.path), "run"]) == 0
-    full = json.loads(capsys.readouterr().out)
+    full = json.loads(capsys.readouterr().out)["data"]
     assert full["coverage"]["scope"] == "full" and len(full["cases"]) == 2
     assert main(["--project", str(p.path), "run", "--case", "test.works"]) == 0
-    partial = json.loads(capsys.readouterr().out)
+    partial = json.loads(capsys.readouterr().out)["data"]
     assert partial["coverage"]["scope"] == "partial"
     assert main(["--project", str(p.path), "run", "--profile", "full", "--case", "test.works"]) == 2
 
@@ -150,14 +150,14 @@ def test_failed_discovery_transaction_restores_config(project_factory, monkeypat
     p = configure(project_factory())
     inv = native(p)
     original = p.path.read_bytes()
-    from aat.discovery import atomic_bytes
+    from aat.transaction import atomic_bytes
 
     def fail(path, data):
         if str(path).endswith("discovery.json"):
             raise OSError("disk failure")
         atomic_bytes(path, data)
 
-    monkeypatch.setattr("aat.discovery.atomic_bytes", fail)
+    monkeypatch.setattr("aat.transaction.atomic_bytes", fail)
     with pytest.raises(OSError):
         reconcile(p, inv)
     assert p.path.read_bytes() == original
