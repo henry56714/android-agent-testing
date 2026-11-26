@@ -2,11 +2,11 @@
 
 面向 Coding Agent 的 Android 测试 CLI：管理可复用用例，调用项目已有的 Gradle/JUnit/Lint、ADB instrumentation 和 Maestro，并保存计划、源码快照与执行证据。自然语言由调用方 Agent 理解，固定回归无需模型服务。
 
-当前代码版本 **0.3.0**，配置 schema 为 **1**。源码托管于 [GitHub](https://github.com/henry56714/android-agent-testing)，当前为私有仓库，需要仓库访问权限；尚未发布软件包。实现、已知问题和整改方案集中在[技术方案](docs/technical-design.md)。
+当前代码版本 **0.3.0**，配置 schema 为 **1**。源码公开托管于 [GitHub](https://github.com/henry56714/android-agent-testing)，任何人都可以查看、下载，并通过 Fork 和 Pull Request（PR）参与贡献，欢迎共同维护；尚未发布软件包。实现、已知问题和整改方案集中在[技术方案](docs/technical-design.md)。
 
 ## 安装与首次检查
 
-需要 Python 3.11+ 和 uv。通过已认证的 GitHub 账号克隆仓库后执行，不需要 Android 设备；已有本地仓库可跳过前两行：
+需要 Python 3.11+ 和 uv。克隆公开仓库无需登录 GitHub，以下命令不需要 Android 设备；已有本地仓库可跳过前两行：
 
 ```bash
 git clone https://github.com/henry56714/android-agent-testing.git
@@ -175,6 +175,14 @@ aat pin RUN_ID
 ```
 
 重放目录必须尚不存在且在原项目之外；恢复源码后仍需对应 JDK/SDK/Gradle/依赖与环境变量。prune 默认保留失败和 pin 记录，保留结果摘要，删除到期证据后不能再重放。中断运行可能只显示 INCOMPLETE，不自动恢复执行。
+
+## 参与贡献与共同维护
+
+项目面向社区开放协作，支持多人共同维护。仓库所有者为 `henry56714`；任何访客都可以查看和下载代码，登录自己的 GitHub 账号后即可 Fork、提交 Issue 或 PR，无需事先成为仓库协作者。
+
+贡献流程：Fork 仓库，在自己的分支完成修改和下文的开发验证，然后向本仓库 `main` 提交 PR。PR 应说明解决的问题、改动内容和验证结果；涉及设备或测试发现逻辑的修改还需提供相应 Android 验证证据。维护者评审代码与 CI 结果后合并。
+
+持续参与者可由仓库所有者邀请为协作者，共同承担代码开发、PR 评审、合并和版本维护。直接推送和合并权限授予获授权的维护者；普通贡献者通过 PR 参与，不需要获得主仓库写权限。首次贡献者的 PR 工作流可能需要维护者批准运行，这不影响提交 PR。
 
 ## Agent、隐私与维护约定
 

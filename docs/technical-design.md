@@ -151,6 +151,8 @@ init 提供 source/apk 模板、缺项清单、ignore 合并与覆盖保护，ch
 
 项目/用例/result schema 不变，旧结果只读可查；旧 journal 可恢复。新增 JSON envelope 的 schema 与结果本体独立。没有把旧失败结果改成成功，也没有为缺失历史生成虚构版本。后续改接口必须同时更新两份文档与相应契约测试。
 
+项目采用公开协作和多人维护方式：任何人均可查看、下载源码，并使用 GitHub 账号通过 Fork/PR 贡献修改，无需预先获得协作者权限。仓库所有者管理协作者授权，获授权的维护者共同负责开发、评审、合并与版本维护。改动通过 PR 讨论，合并前核对相关测试与证据；具体贡献步骤见 README。这里描述协作约定，GitHub 是否强制执行合并检查以实际分支保护和规则集配置为准。
+
 ## 5. 本次自测与证据
 
 本机证据根目录：`.aat/verification/20261112-remediation/`，不进入 Git。最终完整自测位于其 `final/`；可按 README 的 selftest 命令在新目录复跑。每项记录 argv、cwd、起止时间、退出码、预期退出码、日志 SHA-256；最终保存源码清单/归档和证据清单。
@@ -199,4 +201,4 @@ Maestro、Gradle、Android SDK、JDK、JUnit、AndroidX 为外部执行/构建�
 
 Android 工作流的配置依据为 [emulator-runner 官方仓库](https://github.com/ReactiveCircus/android-emulator-runner)、[Gradle Actions 官方仓库](https://github.com/gradle/actions) 和 [Maestro 2.12.1 官方发布](https://github.com/mobile-dev-inc/Maestro/releases/tag/cli-2.12.1)；Maestro ZIP 固定版本并校验 SHA-256。运行事实以上面的本机证据为准，不将工作流配置等同于远程执行成功。
 
-运行流水由机器报告保存，项目只维护 README 与本文；不再新增独立阶段报告或重复使用指南。2026-11-12 整改自测时未创建远程仓库；2026-11-26 已将源码推送至 [GitHub 私有仓库](https://github.com/henry56714/android-agent-testing)，尚未发布软件包。远程 CI 的实际状态以 [Actions 运行记录](https://github.com/henry56714/android-agent-testing/actions)为准。
+运行流水由机器报告保存，项目只维护 README 与本文；不再新增独立阶段报告或重复使用指南。源码已公开托管于 [GitHub](https://github.com/henry56714/android-agent-testing)，欢迎通过 Issue 和 PR 参与贡献及共同维护，尚未发布软件包。远程 CI 的实际状态以 [Actions 运行记录](https://github.com/henry56714/android-agent-testing/actions)为准。
